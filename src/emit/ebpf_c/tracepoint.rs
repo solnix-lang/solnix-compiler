@@ -51,6 +51,7 @@ pub fn emit_tracepoint(out: &mut String, unit: &UnitIr, sec: &str) -> Result<(),
                         let op_str = match op {
                             BinaryOp::Add => "+", BinaryOp::Sub => "-",
                             BinaryOp::Mul => "*", BinaryOp::Div => "/", BinaryOp::Mod => "%",
+                            BinaryOp::Shl => "<<", BinaryOp::Shr => ">>",
                         };
                         writeln!(out, "    {} = {} {} {};", res, left, op_str, right).map_err(err)?;
                     }

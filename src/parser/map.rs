@@ -25,10 +25,10 @@ pub fn parse_map(parser: &mut Parser) -> Result<MapDecl, ParseError> {
                 "lru_hash" => MapType::LruHash,
                 "prog_array" => MapType::ProgArray,
                 _ => {
-                    return Err(parser.error_with_help(
-                        format!("Unknown map type: {}", t_tok.lexeme),
-                        "Valid types: hash, array, ringbuf, lru_hash, prog_array"
-                    ));
+                    return Err(parser.error(format!(
+                        "Unknown map type: {} (valid: hash, array, ringbuf, lru_hash, prog_array)",
+                        t_tok.lexeme
+                    )));
                 }
             });
 
@@ -64,10 +64,10 @@ pub fn parse_map(parser: &mut Parser) -> Result<MapDecl, ParseError> {
             continue;
         }
         
-        return Err(parser.error_with_help(
-            format!("Unexpected token inside map: {}", parser.current_kind()),
-            "Expected one of: type, key, value, max"
-        ));
+        return Err(parser.error(format!(
+            "Unexpected token inside map: {} (expected one of: type, key, value, max)",
+            parser.current_kind()
+        )));
     }
     
     expect_token(parser, TokenKind::RBrace)?;

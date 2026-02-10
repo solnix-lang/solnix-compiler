@@ -1,9 +1,77 @@
-use crate::emit::ebpf_c::program::emit_program;
+use crate::diagnostics::{CompileDiagnostic, DiagnosticBuilder, ErrorCategory, ErrorCode, Span, SourceManager};
 use crate::parser;
-use crate::source_manager::SourceManager;
+use crate::emit::ebpf_c::program::emit_program;
 use miette::{IntoDiagnostic, Report, WrapErr};
 use std::fs;
 use std::path::Path;
+
+pub struct ErrorHandler {
+    source_manager: SourceManager,
+}
+
+impl ErrorHandler {
+    pub fn new() -> Self {
+        Self {
+            source_manager: SourceManager::new(),
+        }
+    }
+
+    /// Register a source file
+    pub fn add_file(&mut self, path: String, content: String) -> crate::diagnostics::FileId {
+        self.source_manager.add_file(path, content)
+    }
+
+    /// Format and display a diagnostic error
+    pub fn report_error(&self, diagnostic: CompileDiagnostic) -> Report {
+        Report::from(diagnostic)
+    }
+
+    /// Create a parse error diagnostic
+    pub fn parse_error(
+        &self,
+        message: impl Into<String>,
+        span: &Span,
+    ) -> Result<CompileDiagnostic, String> {
+        DiagnosticBuilder::new(ErrorCategory::Parse, ErrorCode::UnexpectedToken, message)
+            .build(span, &self.source_manager)
+    }
+
+    /// Create a semantic error diagnostic
+    pub fn semantic_error(
+        &self,
+        code: ErrorCode,
+        message: impl Into<String>,
+        span: &Span,
+    ) -> Result<CompileDiagnostic, String> {
+        DiagnosticBuilder::new(ErrorCategory::Semantic, code, message)
+            .build(span, &self.source_manager)
+    }
+
+    /// Create a lexical error diagnostic
+    pub fn lexical_error(
+        &self,
+        code: ErrorCode,
+        message: impl Into<String>,
+        span: &Span,
+    ) -> Result<CompileDiagnostic, String> {
+        DiagnosticBuilder::new(ErrorCategory::Lexical, code, message)
+            .build(span, &self.source_manager)
+    }
+
+    /// Create a codegen error diagnostic
+    pub fn codegen_error(
+        &self,
+        message: impl Into<String>,
+        span: &Span,
+    ) -> Result<CompileDiagnostic, String> {
+        DiagnosticBuilder::new(
+            ErrorCategory::Codegen,
+            ErrorCode::CodegenError,
+            message,
+        )
+        .build(span, &self.source_manager)
+    }
+}
 
 pub fn compile(input_path: &Path, output_path: &Path) -> Result<(), miette::Report> {
     match input_path.extension().and_then(|e| e.to_str()) {
@@ -27,17 +95,28 @@ pub fn compile(input_path: &Path, output_path: &Path) -> Result<(), miette::Repo
         return Err(miette::miette!("Empty input source code"));
     }
 
-    let mut sources = SourceManager::new();
-    let _file_id = sources.add_file(input_path.display().to_string(), src.clone());
+    let mut error_handler = ErrorHandler::new();
+    let _file_id = error_handler.add_file(input_path.display().to_string(), src.clone());
 
     let program = match parser::parse(&src) {
         Ok(prog) => prog,
         Err(e) => {
-            let report: Report = e.into();
-            eprintln!("{:?}", report);
-            return Err(report);
+            let span = Span::new(_file_id, e.0.offset..e.0.offset + 1 );
+            match error_handler.parse_error(e.1.clone(), &span) {
+                Ok(diag) => {
+                    let report = error_handler.report_error(diag);
+                    eprintln!("{}", report);
+                    return Err(report);
+                }
+                Err(_) => {
+                    let report = miette::miette!("{}", e.1);
+                    eprintln!("{}", report);
+                    return Err(report);
+                }
+            }
         }
     };
+    
     let program_ir = crate::ir::lower_program(&program).map_err(|e| miette::miette!("{e:?}"))?;
 
     emit_program(&program_ir, output_path)

@@ -375,6 +375,8 @@ fn lower_expr(
                 crate::ast::BinOp::Mul => BinaryOp::Mul,
                 crate::ast::BinOp::Div => BinaryOp::Div,
                 crate::ast::BinOp::Mod => BinaryOp::Mod,
+                crate::ast::BinOp::Shl => BinaryOp::Shl,
+                crate::ast::BinOp::Shr => BinaryOp::Shr,
             };
 
             block.instructions.push(Instruction {

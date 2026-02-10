@@ -97,10 +97,7 @@ fn parse_stmt(parser: &mut Parser, body: &mut Vec<Stmt>) -> Result<(), ParseErro
         let lookup_tok = parser.expect(TokenKind::Identifier)?;
         
         if lookup_tok.lexeme != "lookup" {
-            return Err(parser.error_with_help(
-                "Expected 'lookup' method",
-                format!("Found: {}", lookup_tok.lexeme)
-            ));
+            return Err(parser.error(format!("Expected 'lookup' method, found: {}", lookup_tok.lexeme)));
         }
 
         expect_token(parser, TokenKind::LParen)?;
@@ -189,8 +186,7 @@ fn parse_stmt(parser: &mut Parser, body: &mut Vec<Stmt>) -> Result<(), ParseErro
         return Ok(());
     }
 
-    Err(parser.error("Unexpected statement")
-        .with_help("Expected: reg, imm, heap, return, if, or expression"))
+    Err(parser.error("Unexpected statement: expected reg, imm, heap, return, if, or expression"))
 }
 
 pub fn parse_expr(parser: &mut Parser) -> Result<Expr, ParseError> {
@@ -198,7 +194,7 @@ pub fn parse_expr(parser: &mut Parser) -> Result<Expr, ParseError> {
 }
 
 fn parse_add(parser: &mut Parser) -> Result<Expr, ParseError> {
-    let mut expr = parse_mul(parser)?;
+    let mut expr = parse_shift(parser)?;
 
     loop {
         if parser.r#match(TokenKind::Plus) {
@@ -303,7 +299,7 @@ fn parse_unary(parser: &mut Parser) -> Result<Expr, ParseError> {
 }
 
 fn parse_primary(parser: &mut Parser) -> Result<Expr, ParseError> {
-    // number
+    // number literal
     if parser.check(TokenKind::Number) {
         let num_tok = parser.expect(TokenKind::Number)?;
         let value = num_tok
@@ -316,15 +312,15 @@ fn parse_primary(parser: &mut Parser) -> Result<Expr, ParseError> {
         });
     }
 
-    // (expr)
+    // parenthesized expression: (expr)
     if parser.r#match(TokenKind::LParen) {
         let e = parse_expr(parser)?;
         expect_token(parser, TokenKind::RParen)?;
         return Ok(e);
     }
 
-    // identifier or method call
-    let receiver_tok = parser.expect(TokenKind::Identifier)?;
+    // identifier (variable, method call, or function call)
+    let ident_tok = parser.expect(TokenKind::Identifier)?;
 
     // method call: receiver.method(arg)
     if parser.r#match(TokenKind::Dot) {
@@ -335,17 +331,80 @@ fn parse_primary(parser: &mut Parser) -> Result<Expr, ParseError> {
 
         return Ok(Expr {
             kind: ExprKind::MethodCall(MethodCall {
-                receiver: receiver_tok.lexeme,
+                receiver: ident_tok.lexeme,
                 method: method_tok.lexeme,
                 arg: Box::new(arg),
             }),
-            loc: receiver_tok.loc,
+            loc: ident_tok.loc,
         });
     }
+    
+    if parser.r#match(TokenKind::LParen) {
+        let mut args = Vec::new();
 
-    // variable
+        // parse arguments if any
+        if !parser.check(TokenKind::RParen) {
+            loop {
+                args.push(parse_expr(parser)?);
+
+                if parser.r#match(TokenKind::Comma) {
+                    continue;
+                } else {
+                    break;
+                }
+            }
+        }
+
+        expect_token(parser, TokenKind::RParen)?;
+        return Ok(Expr {
+            kind: ExprKind::Call(crate::ast::CallExpr {
+                name: ident_tok.lexeme,
+                args,
+            }),
+            loc: ident_tok.loc,
+        });
+    }
+    
     Ok(Expr {
-        kind: ExprKind::Variable(receiver_tok.lexeme),
-        loc: receiver_tok.loc,
+        kind: ExprKind::Variable(ident_tok.lexeme),
+        loc: ident_tok.loc,
     })
+}
+
+fn parse_shift(parser: &mut Parser) -> Result<Expr, ParseError> {
+    let mut expr = parse_mul(parser)?; 
+
+    loop {
+        if parser.r#match(TokenKind::Shl) {
+            let rhs = parse_mul(parser)?;
+            let loc = expr.loc;
+            expr = Expr {
+                kind: ExprKind::Binary(crate::ast::BinaryExpr {
+                    op: crate::ast::BinOp::Shl,
+                    left: Box::new(expr),
+                    right: Box::new(rhs),
+                }),
+                loc,
+            };
+            continue;
+        }
+
+        if parser.r#match(TokenKind::Shr) {
+            let rhs = parse_mul(parser)?;
+            let loc = expr.loc;
+            expr = Expr {
+                kind: ExprKind::Binary(crate::ast::BinaryExpr {
+                    op: crate::ast::BinOp::Shr,
+                    left: Box::new(expr),
+                    right: Box::new(rhs),
+                }),
+                loc,
+            };
+            continue;
+        }
+
+        break;
+    }
+
+    Ok(expr)
 }

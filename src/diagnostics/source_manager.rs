@@ -1,0 +1,145 @@
+//! Source file and span management
+//!
+//! Tracks source files and provides utilities for converting between
+//! different span representations.
+
+use std::collections::HashMap;
+use std::ops::Range;
+
+/// Unique identifier for a source file
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct FileId(pub u32);
+
+/// A location in a source file
+#[derive(Debug, Clone)]
+pub struct Span {
+    pub file: FileId,
+    pub range: Range<usize>,
+}
+
+/// Metadata about a source file
+pub struct SourceFile {
+    pub name: String,
+    pub content: String,
+}
+
+/// Manages source files and their metadata
+pub struct SourceManager {
+    files: HashMap<FileId, SourceFile>,
+    next_id: u32,
+}
+
+impl SourceManager {
+    /// Create a new source manager
+    pub fn new() -> Self {
+        Self {
+            files: HashMap::new(),
+            next_id: 0,
+        }
+    }
+
+    /// Add a new source file and return its ID
+    pub fn add_file(&mut self, name: String, content: String) -> FileId {
+        let id = FileId(self.next_id);
+        self.next_id += 1;
+        self.files.insert(id, SourceFile { name, content });
+        id
+    }
+
+    /// Get a source file by ID
+    pub fn get(&self, id: FileId) -> Option<&SourceFile> {
+        self.files.get(&id)
+    }
+
+    /// Get the file name for a given FileId
+    pub fn file_name(&self, id: FileId) -> Option<&str> {
+        self.files.get(&id).map(|f| f.name.as_str())
+    }
+
+    /// Get the file content for a given FileId
+    pub fn file_content(&self, id: FileId) -> Option<&str> {
+        self.files.get(&id).map(|f| f.content.as_str())
+    }
+
+    /// Get line and column information for a byte offset
+    pub fn line_col(&self, file: FileId, byte_offset: usize) -> Option<(usize, usize)> {
+        let content = self.file_content(file)?;
+
+        let mut line = 1;
+        let mut col = 1;
+
+        for (i, ch) in content.chars().enumerate() {
+            if i >= byte_offset {
+                break;
+            }
+            if ch == '\n' {
+                line += 1;
+                col = 1;
+            } else {
+                col += 1;
+            }
+        }
+
+        Some((line, col))
+    }
+}
+
+impl Span {
+    pub fn new(file: FileId, range: Range<usize>) -> Self {
+        Self { file, range }
+    }
+
+    /// Convert to a miette SourceSpan for formatting
+    pub fn to_source_span(&self) -> miette::SourceSpan {
+        (self.range.start..self.range.end).into()
+    }
+
+    /// Get the start position in bytes
+    pub fn start(&self) -> usize {
+        self.range.start
+    }
+
+    /// Get the end position in bytes
+    pub fn end(&self) -> usize {
+        self.range.end
+    }
+
+    /// Get the length in bytes
+    pub fn len(&self) -> usize {
+        self.range.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.range.is_empty()
+    }
+}
+
+impl Default for SourceManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_source_manager() {
+        let mut manager = SourceManager::new();
+        let id = manager.add_file("test.snx".to_string(), "let x = 42".to_string());
+
+        assert_eq!(manager.file_name(id), Some("test.snx"));
+        assert_eq!(manager.file_content(id), Some("let x = 42"));
+    }
+
+    #[test]
+    fn test_line_col() {
+        let mut manager = SourceManager::new();
+        let id = manager.add_file("test.snx".to_string(), "line 1\nline 2\nline 3".to_string());
+
+        assert_eq!(manager.line_col(id, 0), Some((1, 1)));
+        assert_eq!(manager.line_col(id, 6), Some((1, 7))); // after "line 1"
+        assert_eq!(manager.line_col(id, 7), Some((2, 1))); // at "line 2"
+    }
+}
