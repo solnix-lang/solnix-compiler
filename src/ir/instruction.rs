@@ -34,7 +34,9 @@ pub enum BinaryOp {
     Sub,
     Mul,
     Div,
-    Mod
+    Mod,
+    Shl,
+    Shr,
 }
 
 #[allow(dead_code)]

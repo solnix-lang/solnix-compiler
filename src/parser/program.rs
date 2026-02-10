@@ -17,10 +17,7 @@ pub fn parse_program(parser: &mut Parser) -> Result<Program, ParseError> {
             let unit = parse_unit(parser)?;
             units.push(unit);
         } else {
-            return Err(parser.error_with_help(
-                "Expected 'map' or 'unit'",
-                "Programs must start with map declarations or unit definitions"
-            ));
+            return Err(parser.error("Expected 'map' or 'unit'"));
         }
     }
 

@@ -1,42 +1,9 @@
 #![allow(unused_assignments)]
+#![allow(unused_assignments)]
 
 use crate::parser::TokenKind;
-use miette::{Diagnostic, SourceSpan};
 
-#[derive(Debug, Diagnostic, thiserror::Error)]
-pub enum LexError {
-    #[error("Unterminated comment")]
-    #[diagnostic(help("Comments start with /* and end with */"))]
-    UnterminatedComment {
-        #[allow(unused)]
-        span: SourceSpan,
-    },
-
-    #[error("Invalid character")]
-    InvalidCharacter {
-        #[allow(unused)]
-        span: SourceSpan,
-    },
-
-    #[error("Unterminated string literal")]
-    UnterminatedString {
-        #[allow(unused)]
-        span: SourceSpan,
-    },
-
-    #[error("Invalid escape sequence: \\{seq}")]
-    InvalidEscapeSequence {
-        seq: String,
-        #[allow(unused)]
-        span: SourceSpan,
-    },
-
-    #[error("Expected string literal")]
-    ExpectedStringLiteral {
-        #[allow(unused)]
-        span: SourceSpan,
-    },
-}
+pub type LexError = (crate::parser::SourceLoc, String);
 
 pub struct Lexer<'src> {
     src: &'src str,
@@ -122,12 +89,12 @@ impl<'src> Lexer<'src> {
                     }
                     self.advance();
                 }
-                return Err(LexError::UnterminatedComment {
-                    span: (start_loc.offset..self.index).into(),
-                });
+                return Err((start_loc, "Unterminated comment".to_string()));
             } else {
                 self.index -= 1;
-                self.column -= 1;
+                if self.column > 1 {
+                    self.column -= 1;
+                }
             }
         }
         Ok(())
@@ -212,9 +179,7 @@ impl<'src> Lexer<'src> {
             }
 
             if !has_digits {
-                return Err(LexError::InvalidCharacter {
-                    span: (self.index..self.index + 1).into(),
-                });
+                return Err((self.current_loc(), "Invalid character".to_string()));
             }
         } else {
             while self.index < self.bytes.len() {
@@ -233,11 +198,7 @@ impl<'src> Lexer<'src> {
         }
 
         let lexeme = &self.src[start..self.index];
-        Ok(crate::parser::Token::new_number(
-            lexeme.to_string(),
-            loc,
-            value,
-        ))
+        Ok(crate::parser::Token::new_number(lexeme.to_string(), loc, value))
     }
 
     fn read_string(&mut self) -> Result<crate::parser::Token, LexError> {
@@ -245,9 +206,7 @@ impl<'src> Lexer<'src> {
         let loc = self.current_loc();
 
         if self.peek() != '"' {
-            return Err(LexError::ExpectedStringLiteral {
-                span: (self.index..self.index + 1).into(),
-            });
+            return Err((loc, "Expected string literal".to_string()));
         }
 
         self.advance();
@@ -268,33 +227,42 @@ impl<'src> Lexer<'src> {
                 '\\' => {
                     self.advance();
                     if self.index >= self.bytes.len() {
-                        return Err(LexError::UnterminatedString {
-                            span: (start..self.index).into(),
-                        });
+                        return Err((
+                            crate::parser::SourceLoc::new(self.line, self.column, self.index),
+                            "Unterminated string literal".to_string(),
+                        ));
                     }
                     let esc = self.peek();
                     match esc {
-                        '"' | '\\' | 'n' => self.advance(),
+                        '"' | '\\' | 'n' => {
+                            self.advance();
+                        }
                         _ => {
-                            return Err(LexError::InvalidEscapeSequence {
-                                seq: esc.to_string(),
-                                span: (self.index - 1..self.index).into(),
-                            });
+                            return Err((
+                                crate::parser::SourceLoc::new(
+                                    self.line,
+                                    self.column.saturating_sub(1),
+                                    self.index - 1,
+                                ),
+                                format!("Invalid escape sequence: {}", esc),
+                            ));
                         }
                     }
                 }
                 '\n' => {
-                    return Err(LexError::UnterminatedString {
-                        span: (start..self.index).into(),
-                    });
+                    return Err((
+                        crate::parser::SourceLoc::new(self.line, self.column, self.index),
+                        "Unterminated string literal".to_string(),
+                    ));
                 }
                 _ => self.advance(),
             }
         }
 
-        Err(LexError::UnterminatedString {
-            span: (start..self.index).into(),
-        })
+        Err((
+            crate::parser::SourceLoc::new(self.line, self.column, self.index),
+            "Unterminated string literal".to_string(),
+        ))
     }
 
     pub fn next_token(&mut self) -> Result<crate::parser::Token, LexError> {
@@ -412,19 +380,13 @@ impl<'src> Lexer<'src> {
                 self.advance();
                 if self.peek() == '=' {
                     self.advance();
-                    Ok(crate::parser::Token::new(
-                        TokenKind::PercentEquals,
-                        "%=",
-                        loc,
-                    ))
+                    Ok(crate::parser::Token::new(TokenKind::PercentEquals, "%=", loc))
                 } else {
                     Ok(crate::parser::Token::new(TokenKind::Percent, "%", loc))
                 }
             }
 
-            _ => Err(LexError::InvalidCharacter {
-                span: (loc.offset..loc.offset + 1).into(),
-            }),
+            _ => Err((loc, "Invalid character".to_string())),
         }
     }
 }

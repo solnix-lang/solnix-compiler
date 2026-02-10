@@ -47,27 +47,26 @@ pub enum AssignmentOp {
 }
 
 #[derive(Debug, Clone)]
-#[allow(unused)]
 pub struct IfGuard {
     pub condition: Expr,
     pub body: Vec<Stmt>,
 }
 
 #[derive(Debug, Clone)]
-#[allow(unused)]
 pub struct Expr {
     pub kind: ExprKind,
     pub loc: SourceLoc,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[allow(unused)]
 pub enum BinOp {
     Add,
     Sub,
     Mul,
     Div,
     Mod,
+    Shl,
+    Shr,
 }
 
 #[derive(Debug, Clone)]
@@ -79,6 +78,12 @@ pub struct BinaryExpr {
 }
 
 #[derive(Debug, Clone)]
+pub struct CallExpr {
+    pub name: String,
+    pub args: Vec<Expr>,
+}
+
+#[derive(Debug, Clone)]
 #[allow(unused)]
 pub enum ExprKind {
     Variable(String),
@@ -87,6 +92,7 @@ pub enum ExprKind {
     HeapLookup(HeapLookup),
     Dereference(Box<Expr>),
     Binary(BinaryExpr),
+    Call(CallExpr),
 }
 
 #[derive(Debug, Clone)]

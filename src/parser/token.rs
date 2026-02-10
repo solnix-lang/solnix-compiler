@@ -64,6 +64,7 @@ pub enum TokenKind {
     RParen,
     Colon,
     Dot,
+    Comma,
     Semicolon,
 
     // Assignment
@@ -80,6 +81,8 @@ pub enum TokenKind {
     Star,
     Slash,
     Percent,
+    Shr,
+    Shl,
 
     // Literals / identifiers
     Identifier,
@@ -172,6 +175,7 @@ impl fmt::Display for TokenKind {
             Self::RParen => write!(f, ")"),
             Self::Colon => write!(f, ":"),
             Self::Dot => write!(f, "."),
+            Self::Comma => write!(f, ","),
             Self::Semicolon => write!(f, ";"),
 
             // Assignment
@@ -188,6 +192,8 @@ impl fmt::Display for TokenKind {
             Self::Star => write!(f, "*"),
             Self::Slash => write!(f, "/"),
             Self::Percent => write!(f, "%"),
+            Self::Shl => write!(f, "<<"),
+            Self::Shr => write!(f, ">>"),
 
             // Literals / identifiers
             Self::Identifier => write!(f, "identifier"),

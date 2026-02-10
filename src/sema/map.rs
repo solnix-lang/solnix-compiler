@@ -18,6 +18,7 @@ pub enum MapValidationError {
 }
 
 
+
 pub fn check_map(
     map_decl: &MapDecl,
     diagnostics: &mut DiagnosticReporter,

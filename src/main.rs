@@ -1,6 +1,5 @@
 mod compiler;
 mod diagnostics;
-mod source_manager;
 mod parser;
 mod ast;
 mod lexer;

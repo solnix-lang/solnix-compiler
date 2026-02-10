@@ -1,0 +1,24 @@
+map execve_count {
+    type: .hash;
+    key: u32;
+    value: u64;
+    max: 16384;
+}
+
+unit sys_enter_execve_counter {
+    section: "tracepoint/syscalls/sys_enter_execve";
+    license: "GPL";
+
+    reg pid_tgid = get_current_pid_tgid();
+    reg pid = pid_tgid >> 32;
+
+    heap cnt = execve_count.lookup(pid);
+
+    if guard(cnt != null) {
+        *cnt += 1;
+    } else {
+        execve_count.update(pid, 1);
+    }
+
+    return 0;
+}
