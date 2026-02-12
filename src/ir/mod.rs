@@ -2,6 +2,8 @@ pub mod instruction;
 pub mod program;
 pub mod unit;
 pub use program::lower_program;
+pub mod ctx;
+
 
 pub use instruction::{
     Instruction,

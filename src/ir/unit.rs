@@ -1,5 +1,7 @@
 use super::{Instruction, VarId};
 use crate::ast::{Expr, ExprKind, Stmt, StmtKind, Unit};
+use crate::ast::unit::ProgramKind;
+use crate::ir::ctx::CtxMethod;
 use crate::ir::{BinaryOp, LoweringError, Opcode, Operand};
 
 #[derive(Debug, Clone)]
@@ -9,6 +11,7 @@ pub struct UnitIr {
     pub license: String,
     pub blocks: Vec<BasicBlock>,
     pub next_var_id: u32,
+    pub program_type: ProgramKind,
 }
 
 #[allow(dead_code)]
@@ -42,12 +45,15 @@ struct LowerCtx {
 
 impl UnitIr {
     pub fn lower(unit: &Unit) -> Result<Self, LoweringError> {
+        let program_kind = unit.kind;
+
         let mut ir = Self {
             name: unit.name.clone(),
             sections: unit.sections.clone(),
             license: unit.license.clone().unwrap_or_else(|| "GPL".to_string()),
             blocks: Vec::new(),
             next_var_id: 0,
+            program_type: program_kind,
         };
 
         let mut ctx = LowerCtx {
@@ -110,7 +116,9 @@ fn lower_statement(
 
             block.instructions.push(Instruction {
                 result,
-                opcode: Opcode::CallMap { map_name: heap_decl.lookup.map_name.clone() },
+                opcode: Opcode::CallMap {
+                    map_name: heap_decl.lookup.map_name.clone(),
+                },
                 operands: vec![key],
                 result_type: crate::ast::Type::U64,
             });
@@ -122,18 +130,18 @@ fn lower_statement(
 
         StmtKind::Assignment(assign) => {
             let value = lower_expr(&assign.value, ctx, ir, block)?;
-            
+
             match &assign.target.kind {
                 ExprKind::Dereference(ptr_expr) => {
                     let ptr = lower_expr(ptr_expr, ctx, ir, block)?;
-                    
+
                     // If the pointer is a map pointer, we need to insert a null check
                     let needs_null_check = if let Operand::Var(ptr_var) = ptr {
                         ctx.map_ptr_vars.contains(&ptr_var)
                     } else {
                         false
                     };
-                    
+
                     if needs_null_check {
                         // Emit a NullCheck instruction
                         let null_check_result = ir.alloc_var(crate::ast::Type::U64);
@@ -144,7 +152,7 @@ fn lower_statement(
                             result_type: crate::ast::Type::U64,
                         });
                     }
-                    
+
                     // For +=, we need to load the current value, add, then store
                     let final_value = if assign.op == crate::ast::AssignmentOp::AddAssign {
                         // Load current value
@@ -155,7 +163,7 @@ fn lower_statement(
                             operands: vec![ptr.clone()],
                             result_type: crate::ast::Type::U64,
                         });
-                        
+
                         // Add the new value to it
                         let add_result = ir.alloc_var(crate::ast::Type::U64);
                         block.instructions.push(Instruction {
@@ -164,14 +172,14 @@ fn lower_statement(
                             operands: vec![Operand::Var(load_result), value],
                             result_type: crate::ast::Type::U64,
                         });
-                        
+
                         Operand::Var(add_result)
                     } else {
                         value
                     };
-                    
+
                     let _result = ir.alloc_var(crate::ast::Type::U64);
-                    
+
                     block.instructions.push(Instruction {
                         result: _result,
                         opcode: Opcode::Store { size: 8 },
@@ -182,7 +190,7 @@ fn lower_statement(
                 ExprKind::Variable(var_name) => {
                     if ctx.vars.contains_key(var_name) {
                         let var_id = ctx.vars.get(var_name).copied().unwrap();
-                        
+
                         let final_value = if assign.op == crate::ast::AssignmentOp::AddAssign {
                             let add_result = ir.alloc_var(crate::ast::Type::U64);
                             block.instructions.push(Instruction {
@@ -202,14 +210,18 @@ fn lower_statement(
                             });
                             result
                         };
-                        
+
                         ctx.vars.insert(var_name.clone(), final_value);
                     } else {
-                        return Err(LoweringError::UnitLowering(format!("Undefined variable: {var_name}")));
+                        return Err(LoweringError::UnitLowering(format!(
+                            "Undefined variable: {var_name}"
+                        )));
                     }
                 }
                 _ => {
-                    return Err(LoweringError::UnitLowering("Invalid assignment target".to_string()));
+                    return Err(LoweringError::UnitLowering(
+                        "Invalid assignment target".to_string(),
+                    ));
                 }
             }
         }
@@ -217,16 +229,16 @@ fn lower_statement(
         StmtKind::IfGuard(if_guard) => {
             let guard_expr = &if_guard.condition;
             let guard_var = match &guard_expr.kind {
-                ExprKind::Variable(name) => {
-                    ctx.vars.get(name).copied().ok_or_else(|| {
-                        LoweringError::UnitLowering(format!("Undefined variable in guard: {name}"))
-                    })?
-                }
+                ExprKind::Variable(name) => ctx.vars.get(name).copied().ok_or_else(|| {
+                    LoweringError::UnitLowering(format!("Undefined variable in guard: {name}"))
+                })?,
                 _ => {
-                    return Err(LoweringError::UnitLowering("Guard must be a variable".to_string()));
+                    return Err(LoweringError::UnitLowering(
+                        "Guard must be a variable".to_string(),
+                    ));
                 }
             };
-            
+
             let null_check_result = ir.alloc_var(crate::ast::Type::U64);
             block.instructions.push(Instruction {
                 result: null_check_result,
@@ -234,7 +246,7 @@ fn lower_statement(
                 operands: vec![Operand::Var(guard_var)],
                 result_type: crate::ast::Type::U64,
             });
-            
+
             let true_block_id = BlockId(ir.blocks.len() as u32);
             let false_block_id = BlockId(ir.blocks.len() as u32 + 1);
             let merge_block_id = BlockId(ir.blocks.len() as u32 + 2);
@@ -249,31 +261,29 @@ fn lower_statement(
                 instructions: Vec::new(),
                 terminator: Terminator::Jump(merge_block_id),
             };
-            
+
             for stmt in &if_guard.body {
                 lower_statement(stmt, ctx, ir, &mut true_block)?;
             }
-            
-            
+
             let false_block = BasicBlock {
                 id: false_block_id,
                 instructions: Vec::new(),
                 terminator: Terminator::Jump(merge_block_id),
             };
-            
+
             let merge_block = BasicBlock {
                 id: merge_block_id,
                 instructions: Vec::new(),
                 terminator: Terminator::Return(Operand::Immediate(0)),
             };
-            
+
             ir.blocks.push(true_block);
             ir.blocks.push(false_block);
             ir.blocks.push(merge_block.clone());
-            
+
             *block = merge_block;
         }
-
     }
     Ok(())
 }
@@ -296,70 +306,156 @@ fn lower_expr(
 
         ExprKind::MethodCall(call) => {
             if call.receiver == "ctx" {
-                let offset_expr = lower_expr(&call.arg, ctx, ir, block)?;
-                let offset = match offset_expr {
-                    Operand::Immediate(n) => n as i32,
-                    _ => return Err(LoweringError::UnitLowering("Context load offset must be immediate".to_string())),
-                };
-                
-                let (size, result_type) = match call.method.as_str() {
-                    "load_u8" => (1, crate::ast::Type::U32),
-                    "load_u16" => (2, crate::ast::Type::U32),
-                    "load_u32" => (4, crate::ast::Type::U32),
-                    "load_u64" => (8, crate::ast::Type::U64),
-                    "load_i8" => (1, crate::ast::Type::I32),
-                    "load_i16" => (2, crate::ast::Type::I32),
-                    "load_i32" => (4, crate::ast::Type::I32),
-                    "load_i64" => (8, crate::ast::Type::I64),
-                    _ => return Err(LoweringError::UnitLowering(format!("Unknown context method: {}", call.method))),
-                };
-                
-                let result = ir.alloc_var(result_type);
-                
-                // Check if this is a packet data load (offset >= 0) or context field load
-                let is_packet = offset >= 0;
-                let opcode = if is_packet {
-                    Opcode::LoadPacket { offset, size }
-                } else {
-                    Opcode::LoadCtx { offset, size }
-                };
-                
-                block.instructions.push(Instruction {
-                    result,
-                    opcode,
-                    operands: vec![],
-                    result_type,
-                });
-                
-                Ok(Operand::Var(result))
-            } else if call.method == "lookup" {
-                let key = lower_expr(&call.arg, ctx, ir, block)?;
-                let result = ir.alloc_var(crate::ast::Type::U64);
+                let method = CtxMethod::from_str(&call.method).ok_or_else(|| {
+                    LoweringError::UnitLowering(format!("Unknown ctx method: {}", call.method))
+                })?;
 
-                block.instructions.push(Instruction {
-                    result,
-                    opcode: Opcode::CallMap { map_name: call.receiver.clone() },
-                    operands: vec![key],
-                    result_type: crate::ast::Type::U64,
-                });
+                if !ir.program_type.allows_ctx_method(method) {
+                    return Err(LoweringError::UnitLowering(format!(
+                        "ctx method {:?} not allowed in {:?}",
+                        method, ir.program_type
+                    )));
+                }
 
-                Ok(Operand::Var(result))
+                match method {
+                    CtxMethod::LoadU8
+                    | CtxMethod::LoadU16
+                    | CtxMethod::LoadU32
+                    | CtxMethod::LoadU64
+                    | CtxMethod::LoadI8
+                    | CtxMethod::LoadI16
+                    | CtxMethod::LoadI32
+                    | CtxMethod::LoadI64 => {
+                        let arg = call.arg.as_ref().ok_or_else(|| {
+                            LoweringError::UnitLowering(format!(
+                                "ctx method {} requires an argument",
+                                call.method
+                            ))
+                        })?;
+                        let offset_expr = lower_expr(arg, ctx, ir, block)?;
+                        let offset = match offset_expr {
+                            Operand::Immediate(n) => n as i32,
+                            _ => {
+                                return Err(LoweringError::UnitLowering(
+                                    "Context load offset must be immediate".to_string(),
+                                ))
+                            }
+                        };
+
+                        let (size, result_type) = match method {
+                            CtxMethod::LoadU8 => (1, crate::ast::Type::U32),
+                            CtxMethod::LoadU16 => (2, crate::ast::Type::U32),
+                            CtxMethod::LoadU32 => (4, crate::ast::Type::U32),
+                            CtxMethod::LoadU64 => (8, crate::ast::Type::U64),
+                            CtxMethod::LoadI8 => (1, crate::ast::Type::I32),
+                            CtxMethod::LoadI16 => (2, crate::ast::Type::I32),
+                            CtxMethod::LoadI32 => (4, crate::ast::Type::I32),
+                            CtxMethod::LoadI64 => (8, crate::ast::Type::I64),
+                            _ => unreachable!(),
+                        };
+
+                        let result = ir.alloc_var(result_type);
+
+                        let opcode = if offset >= 0 {
+                            Opcode::LoadPacket { offset, size }
+                        } else {
+                            Opcode::LoadCtx { offset, size }
+                        };
+
+                        block.instructions.push(Instruction {
+                            result,
+                            opcode,
+                            operands: vec![],
+                            result_type,
+                        });
+
+                        Ok(Operand::Var(result))
+                    }
+
+                    CtxMethod::GetUidGid => {
+                        let result = ir.alloc_var(crate::ast::Type::U32);
+
+                        block.instructions.push(Instruction {
+                            result,
+                            opcode: Opcode::HelperCall { id: 102 }, // example helper id
+                            operands: vec![],
+                            result_type: crate::ast::Type::U32,
+                        });
+
+                        Ok(Operand::Var(result))
+                    }
+
+                    CtxMethod::GetPidTgid => {
+                        let result = ir.alloc_var(crate::ast::Type::U64);
+
+                        block.instructions.push(Instruction {
+                            result,
+                            opcode: Opcode::HelperCall { id: 14 }, // bpf_get_current_pid_tgid
+                            operands: vec![],
+                            result_type: crate::ast::Type::U64,
+                        });
+
+                        Ok(Operand::Var(result))
+                    }
+
+                    CtxMethod::GetCurrentComm => {
+                        let result = ir.alloc_var(crate::ast::Type::U64);
+
+                        block.instructions.push(Instruction {
+                            result,
+                            opcode: Opcode::HelperCall { id: 16 }, // bpf_get_current_comm
+                            operands: vec![],
+                            result_type: crate::ast::Type::U64,
+                        });
+
+                        Ok(Operand::Var(result))
+                    }
+
+                    CtxMethod::GetCurrentTask => {
+                        let result = ir.alloc_var(crate::ast::Type::U64);
+
+                        block.instructions.push(Instruction {
+                            result,
+                            opcode: Opcode::HelperCall { id: 35 }, // bpf_get_current_task
+                            operands: vec![],
+                            result_type: crate::ast::Type::U64,
+                        });
+
+                        Ok(Operand::Var(result))
+                    }
+
+                    CtxMethod::GetKtimeNs => {
+                        let result = ir.alloc_var(crate::ast::Type::U64);
+
+                        block.instructions.push(Instruction {
+                            result,
+                            opcode: Opcode::HelperCall { id: 5 }, // bpf_ktime_get_ns
+                            operands: vec![],
+                            result_type: crate::ast::Type::U64,
+                        });
+
+                        Ok(Operand::Var(result))
+                    }
+                }
             } else {
-                Err(LoweringError::UnitLowering(format!("Unknown method: {}.{}", call.receiver, call.method)))
+                Err(LoweringError::UnitLowering(format!(
+                    "Unknown method: {}.{}",
+                    call.receiver, call.method
+                )))
             }
         }
-        
+
         ExprKind::Dereference(ptr_expr) => {
             let ptr = lower_expr(ptr_expr, ctx, ir, block)?;
             let result = ir.alloc_var(crate::ast::Type::U64);
-            
+
             block.instructions.push(Instruction {
                 result,
                 opcode: Opcode::LoadKey,
                 operands: vec![ptr],
                 result_type: crate::ast::Type::U64,
             });
-            
+
             Ok(Operand::Var(result))
         }
 
@@ -392,7 +488,6 @@ fn lower_expr(
         _ => Err(LoweringError::InvalidOperand),
     }
 }
-
 
 fn vartype_to_type(vt: &crate::ast::VarType) -> Result<crate::ast::Type, LoweringError> {
     use crate::ast::{Type, VarType};

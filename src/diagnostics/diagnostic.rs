@@ -14,6 +14,7 @@ use thiserror::Error;
 #[error("{category} error: {code}\n  {message}")]
 pub struct CompileDiagnostic {
     #[source_code]
+    #[allow(unused_assignments)]
     pub file_content: String,
 
     #[label("{label_message}")]
