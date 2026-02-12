@@ -16,3 +16,5 @@ rustfmt.toml
 .DS_Store
 Thumbs.db
 vmlinux.h
+
+build.sh

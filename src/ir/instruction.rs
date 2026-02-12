@@ -12,19 +12,15 @@ pub struct Instruction {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct VarId(pub u32);
 
-#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub enum Opcode {
+    HelperCall { id: u32 },
     LoadKey,
     Store { size: u8 },
-    
     LoadCtx { offset: i32, size: u8 },
     LoadPacket { offset: i32, size: u8 },
-    
     NullCheck,
-
     Binary { op: BinaryOp },
-
     CallMap { map_name: String },
 }
 

@@ -41,10 +41,16 @@ pub fn parse_unit(parser: &mut Parser) -> Result<Unit, ParseError> {
 
     expect_token(parser, TokenKind::RBrace)?;
 
+    // Determine the program kind from the sections
+    let kind = sections.first()
+        .map(|s| crate::ast::unit::ProgramKind::from_section(s))
+        .unwrap_or(crate::ast::unit::ProgramKind::Unknown);
+
     Ok(Unit {
         name: name_tok.lexeme,
         loc: unit_loc,
         sections,
+        kind,
         license,
         body,
     })
@@ -326,14 +332,21 @@ fn parse_primary(parser: &mut Parser) -> Result<Expr, ParseError> {
     if parser.r#match(TokenKind::Dot) {
         let method_tok = parser.expect(TokenKind::Identifier)?;
         expect_token(parser, TokenKind::LParen)?;
-        let arg = parse_expr(parser)?;
+        
+        // parse optional argument
+        let arg = if !parser.check(TokenKind::RParen) {
+            Some(Box::new(parse_expr(parser)?))
+        } else {
+            None
+        };
+        
         expect_token(parser, TokenKind::RParen)?;
 
         return Ok(Expr {
             kind: ExprKind::MethodCall(MethodCall {
                 receiver: ident_tok.lexeme,
                 method: method_tok.lexeme,
-                arg: Box::new(arg),
+                arg,
             }),
             loc: ident_tok.loc,
         });
