@@ -1,6 +1,5 @@
 
 use crate::ast::{MapDecl, MapType, Type};
-use crate::diagnostics::{DiagnosticReporter, Severity};
 use crate::parser::SourceLoc;
 use std::collections::HashSet;
     
@@ -8,49 +7,37 @@ use std::collections::HashSet;
 #[derive(Debug, thiserror::Error)]
 pub enum MapValidationError {
     #[error("Duplicate map name: {0}")]
-    DuplicateMapName(String),
+    DuplicateMapName(String, SourceLoc),
     
     #[error("Map 'max_entries' must be greater than zero")]
-    InvalidMaxEntries,
+    InvalidMaxEntries(SourceLoc),
     
     #[error("Invalid map type")]
-    InvalidType,
+    InvalidType(SourceLoc),
 }
 
 
 
-pub fn check_map(
-    map_decl: &MapDecl,
-    diagnostics: &mut DiagnosticReporter,
-    map_names: &mut HashSet<String>,
-) -> Result<(), MapValidationError> {
+pub fn check_map(map_decl: &MapDecl, map_names: &mut HashSet<String>) -> Result<(), MapValidationError> {
     if !map_names.insert(map_decl.name.clone()) {
-        diagnostics.report_error(
-            format!("Duplicate map name: '{}'", map_decl.name),
-            map_decl.loc,
-        );
-        return Err(MapValidationError::DuplicateMapName(map_decl.name.clone()));
+        return Err(MapValidationError::DuplicateMapName(map_decl.name.clone(), map_decl.loc));
     }
 
     if map_decl.max_entries == 0 {
-        diagnostics.report_error(
-            "Map 'max_entries' must be greater than zero",
-            map_decl.loc,
-        );
-        return Err(MapValidationError::InvalidMaxEntries);
+        return Err(MapValidationError::InvalidMaxEntries(map_decl.loc));
     }
 
     match map_decl.key_type {
-        Type::U32 | Type::U64 | Type::I32 | Type::I64 => {} // Valid
+        Type::U32 | Type::U64 | Type::I32 | Type::I64 => {}
     }
 
     match map_decl.value_type {
-        Type::U32 | Type::U64 | Type::I32 | Type::I64 => {} // Valid
+        Type::U32 | Type::U64 | Type::I32 | Type::I64 => {}
     }
     
     match map_decl.map_type {
         MapType::Hash | MapType::Array | MapType::Ringbuf | 
-        MapType::LruHash | MapType::ProgArray | MapType::PerfEventArray => {} // Valid
+        MapType::LruHash | MapType::ProgArray | MapType::PerfEventArray => {}
     }
 
     Ok(())
