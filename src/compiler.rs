@@ -1,6 +1,5 @@
 use crate::diagnostics::{CompileDiagnostic, DiagnosticBuilder, ErrorCategory, ErrorCode, Span, SourceManager};
 use crate::parser;
-use crate::emit::ebpf_c::program::emit_program;
 use miette::{IntoDiagnostic, Report, WrapErr};
 use std::fs;
 use std::path::Path;
@@ -73,7 +72,7 @@ impl ErrorHandler {
     }
 }
 
-pub fn compile(input_path: &Path, output_path: &Path) -> Result<(), miette::Report> {
+pub fn compile(input_path: &Path, _output_path: &Path) -> Result<(), miette::Report> {
     match input_path.extension().and_then(|e| e.to_str()) {
         Some("snx") => {}
         _ => {
@@ -82,6 +81,13 @@ pub fn compile(input_path: &Path, output_path: &Path) -> Result<(), miette::Repo
                 input_path.display()
             ));
         }
+    }
+
+    if !input_path.exists() {
+        return Err(miette::miette!(
+            "Input file does not exist: {}",
+            input_path.display()
+        ));
     }
 
     let src = fs::read_to_string(input_path)
@@ -98,7 +104,7 @@ pub fn compile(input_path: &Path, output_path: &Path) -> Result<(), miette::Repo
     let mut error_handler = ErrorHandler::new();
     let _file_id = error_handler.add_file(input_path.display().to_string(), src.clone());
 
-    let program = match parser::parse(&src) {
+    let _program = match parser::parse(&src) {
         Ok(prog) => prog,
         Err(e) => {
             let span = Span::new(_file_id, e.0.offset..e.0.offset + 1 );
@@ -117,11 +123,9 @@ pub fn compile(input_path: &Path, output_path: &Path) -> Result<(), miette::Repo
         }
     };
     
-    let program_ir = crate::ir::lower_program(&program).map_err(|e| miette::miette!("{e:?}"))?;
-
-    emit_program(&program_ir, output_path)
-        .map_err(|e| miette::miette!("{:?}", e))
-        .wrap_err("Failed to emit program")?;
+    crate::build::build(input_path)
+        .map_err(|e| miette::miette!("{}", e))
+        .wrap_err("Build failed")?;
 
     Ok(())
 }

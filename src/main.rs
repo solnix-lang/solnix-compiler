@@ -5,6 +5,8 @@ mod ast;
 mod lexer;
 mod ir;
 mod emit;
+mod build;
+
 
 use compiler::compile;
 use std::path::PathBuf;
