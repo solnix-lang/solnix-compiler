@@ -3,6 +3,7 @@ mod diagnostics;
 mod parser;
 mod ast;
 mod lexer;
+mod sema;
 mod ir;
 mod emit;
 mod build;

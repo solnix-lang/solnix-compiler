@@ -15,6 +15,9 @@ pub fn build(input: &Path) -> Result<(), String> {
     let program = parse(&src)
         .map_err(|e| format!("{:?}", e))?;
 
+    // Run semantic checks before lowering
+    crate::sema::check_program(&program).map_err(|e| format!("Semantic error: {:?}", e))?;
+
     // Create .snx/build/
     let build_dir = prepare_build_dir()?;
 

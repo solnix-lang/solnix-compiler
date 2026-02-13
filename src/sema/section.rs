@@ -1,7 +1,4 @@
 
-use once_cell::sync::Lazy;
-use regex::Regex;
-
 const STATIC_SECTIONS: &[&str] = &[
     "xdp", "xdp/ingress", "xdp/egress", "xdp/frags", "xdp/devmap", "xdp/cpumap", "xdp/offload",
     "tc", "classifier", "action", "tcx/ingress", "tcx/egress", "tc/ingress", "tc/egress",

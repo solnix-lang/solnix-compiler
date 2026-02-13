@@ -103,8 +103,7 @@ pub fn compile(input_path: &Path, _output_path: &Path) -> Result<(), miette::Rep
 
     let mut error_handler = ErrorHandler::new();
     let _file_id = error_handler.add_file(input_path.display().to_string(), src.clone());
-
-    let _program = match parser::parse(&src) {
+    let program = match parser::parse(&src) {
         Ok(prog) => prog,
         Err(e) => {
             let span = Span::new(_file_id, e.0.offset..e.0.offset + 1 );
@@ -122,10 +121,91 @@ pub fn compile(input_path: &Path, _output_path: &Path) -> Result<(), miette::Rep
             }
         }
     };
-    
-    crate::build::build(input_path)
+
+    // Run semantic analysis and emit a CompileDiagnostic with source span on error
+    if let Err(sem_err) = crate::sema::check_program(&program) {
+        use crate::diagnostics::ErrorCode;
+        use crate::parser::SourceLoc;
+
+        // Determine a SourceLoc for the error
+        let loc: SourceLoc = match &sem_err {
+            crate::sema::SemanticError::MapError(me) => match me {
+                crate::sema::map::MapValidationError::DuplicateMapName(_, l)
+                | crate::sema::map::MapValidationError::InvalidMaxEntries(l)
+                | crate::sema::map::MapValidationError::InvalidType(l) => *l,
+            },
+            crate::sema::SemanticError::UnitError(ue) => match ue {
+                crate::sema::unit::UnitValidationError::EmptyUnitName(l)
+                | crate::sema::unit::UnitValidationError::NoSections(l)
+                | crate::sema::unit::UnitValidationError::InvalidSection(l)
+                | crate::sema::unit::UnitValidationError::MissingLicense(l)
+                | crate::sema::unit::UnitValidationError::NoReturnOrInstructions(l) => *l,
+            },
+        };
+
+        let span = Span::new(_file_id, loc.offset..loc.offset + 1);
+
+        // Map semantic error to an ErrorCode and message
+        let (code, msg) = match &sem_err {
+            crate::sema::SemanticError::MapError(me) => match me {
+                crate::sema::map::MapValidationError::DuplicateMapName(name, _)
+                => (ErrorCode::DuplicateIdentifier, format!("Duplicate map name: '{}'", name)),
+                crate::sema::map::MapValidationError::InvalidMaxEntries(_)
+                => (ErrorCode::InvalidMapDeclaration, "Map 'max_entries' must be greater than zero".to_string()),
+                crate::sema::map::MapValidationError::InvalidType(_)
+                => (ErrorCode::InvalidMapType, "Invalid map type".to_string()),
+            },
+            crate::sema::SemanticError::UnitError(ue) => match ue {
+                crate::sema::unit::UnitValidationError::EmptyUnitName(_)
+                => (ErrorCode::InvalidProgramType, "Unit name cannot be empty".to_string()),
+                crate::sema::unit::UnitValidationError::NoSections(_)
+                => (ErrorCode::InvalidSectionType, "Unit must have at least one section".to_string()),
+                crate::sema::unit::UnitValidationError::InvalidSection(_)
+                => (ErrorCode::InvalidSectionType, "Invalid section name".to_string()),
+                crate::sema::unit::UnitValidationError::MissingLicense(_)
+                => (ErrorCode::InvalidProgramType, "License is required for eBPF programs".to_string()),
+                crate::sema::unit::UnitValidationError::NoReturnOrInstructions(_)
+                => (ErrorCode::InvalidProgramType, "Unit must have at least one return statement or instruction".to_string()),
+            },
+        };
+
+        match error_handler.semantic_error(code, msg, &span) {
+            Ok(diag) => {
+                let report = error_handler.report_error(diag);
+                eprintln!("{}", report);
+                return Err(report);
+            }
+            Err(_) => {
+                let report = miette::miette!("Semantic error: {}", sem_err);
+                eprintln!("{}", report);
+                return Err(report);
+            }
+        }
+    }
+
+    // Build steps: prepare build dir, ensure vmlinux.h, lower and emit
+    let build_dir = crate::build::layout::prepare_build_dir()
         .map_err(|e| miette::miette!("{}", e))
         .wrap_err("Build failed")?;
+
+    crate::build::vmlinux::ensure_vmlinux(&build_dir)
+        .map_err(|e| miette::miette!("{}", e))
+        .wrap_err("Build failed")?;
+
+    let file_stem = input_path
+        .file_stem()
+        .unwrap()
+        .to_string_lossy();
+
+    let output = build_dir.join(format!("{file_stem}.o"));
+
+    let program_ir = crate::ir::lower_program(&program)
+        .map_err(|e| miette::miette!("{:?}", e))
+        .wrap_err("Lowering failed")?;
+
+    crate::emit::ebpf_c::program::emit_program(&program_ir, &output)
+        .map_err(|e| miette::miette!("{}", e))
+        .wrap_err("Emit failed")?;
 
     Ok(())
 }
