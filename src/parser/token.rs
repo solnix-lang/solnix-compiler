@@ -41,6 +41,7 @@ pub enum TokenKind {
     KeywordValue,
     KeywordMax,
     KeywordIf,
+    KeywordElse,
     KeywordGuard,
     KeywordHeap,
 
@@ -110,6 +111,7 @@ impl TokenKind {
                 | Self::KeywordValue
                 | Self::KeywordMax
                 | Self::KeywordIf
+                | Self::KeywordElse
                 | Self::KeywordGuard
                 | Self::KeywordHeap
         )
@@ -152,6 +154,7 @@ impl fmt::Display for TokenKind {
             Self::KeywordValue => write!(f, "value"),
             Self::KeywordMax => write!(f, "max"),
             Self::KeywordIf => write!(f, "if"),
+            Self::KeywordElse => write!(f, "else"),
             Self::KeywordGuard => write!(f, "guard"),
             Self::KeywordHeap => write!(f, "heap"),
 

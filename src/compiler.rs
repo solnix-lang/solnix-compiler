@@ -1,4 +1,6 @@
-use crate::diagnostics::{CompileDiagnostic, DiagnosticBuilder, ErrorCategory, ErrorCode, Span, SourceManager};
+use crate::diagnostics::{
+    CompileDiagnostic, DiagnosticBuilder, ErrorCategory, ErrorCode, SourceManager, Span,
+};
 use crate::parser;
 use miette::{IntoDiagnostic, Report, WrapErr};
 use std::fs;
@@ -46,30 +48,26 @@ impl ErrorHandler {
             .build(span, &self.source_manager)
     }
 
-    /// Create a lexical error diagnostic
-    pub fn lexical_error(
-        &self,
-        code: ErrorCode,
-        message: impl Into<String>,
-        span: &Span,
-    ) -> Result<CompileDiagnostic, String> {
-        DiagnosticBuilder::new(ErrorCategory::Lexical, code, message)
-            .build(span, &self.source_manager)
-    }
+    // Create a lexical error diagnostic
+    // pub fn lexical_error(
+    //     &self,
+    //     code: ErrorCode,
+    //     message: impl Into<String>,
+    //     span: &Span,
+    // ) -> Result<CompileDiagnostic, String> {
+    //     DiagnosticBuilder::new(ErrorCategory::Lexical, code, message)
+    //         .build(span, &self.source_manager)
+    // }
 
-    /// Create a codegen error diagnostic
-    pub fn codegen_error(
-        &self,
-        message: impl Into<String>,
-        span: &Span,
-    ) -> Result<CompileDiagnostic, String> {
-        DiagnosticBuilder::new(
-            ErrorCategory::Codegen,
-            ErrorCode::CodegenError,
-            message,
-        )
-        .build(span, &self.source_manager)
-    }
+    // Create a codegen error diagnostic
+    // pub fn codegen_error(
+    //     &self,
+    //     message: impl Into<String>,
+    //     span: &Span,
+    // ) -> Result<CompileDiagnostic, String> {
+    //     DiagnosticBuilder::new(ErrorCategory::Codegen, ErrorCode::CodegenError, message)
+    //         .build(span, &self.source_manager)
+    // }
 }
 
 pub fn compile(input_path: &Path, _output_path: &Path) -> Result<(), miette::Report> {
@@ -106,7 +104,7 @@ pub fn compile(input_path: &Path, _output_path: &Path) -> Result<(), miette::Rep
     let program = match parser::parse(&src) {
         Ok(prog) => prog,
         Err(e) => {
-            let span = Span::new(_file_id, e.0.offset..e.0.offset + 1 );
+            let span = Span::new(_file_id, e.0.offset..e.0.offset + 1);
             match error_handler.parse_error(e.1.clone(), &span) {
                 Ok(diag) => {
                     let report = error_handler.report_error(diag);
@@ -132,7 +130,10 @@ pub fn compile(input_path: &Path, _output_path: &Path) -> Result<(), miette::Rep
             crate::sema::SemanticError::MapError(me) => match me {
                 crate::sema::map::MapValidationError::DuplicateMapName(_, l)
                 | crate::sema::map::MapValidationError::InvalidMaxEntries(l)
-                | crate::sema::map::MapValidationError::InvalidType(l) => *l,
+                | crate::sema::map::MapValidationError::InvalidType(l)
+                | crate::sema::map::MapValidationError::UnknownMapMethod(_, l)
+                | crate::sema::map::MapValidationError::InvalidMapMethodArity(_, _, _, l)
+                | crate::sema::map::MapValidationError::UnknownMapName(_, l) => *l,
             },
             crate::sema::SemanticError::UnitError(ue) => match ue {
                 crate::sema::unit::UnitValidationError::EmptyUnitName(l)
@@ -148,24 +149,57 @@ pub fn compile(input_path: &Path, _output_path: &Path) -> Result<(), miette::Rep
         // Map semantic error to an ErrorCode and message
         let (code, msg) = match &sem_err {
             crate::sema::SemanticError::MapError(me) => match me {
-                crate::sema::map::MapValidationError::DuplicateMapName(name, _)
-                => (ErrorCode::DuplicateIdentifier, format!("Duplicate map name: '{}'", name)),
-                crate::sema::map::MapValidationError::InvalidMaxEntries(_)
-                => (ErrorCode::InvalidMapDeclaration, "Map 'max_entries' must be greater than zero".to_string()),
-                crate::sema::map::MapValidationError::InvalidType(_)
-                => (ErrorCode::InvalidMapType, "Invalid map type".to_string()),
-            },
+    crate::sema::map::MapValidationError::DuplicateMapName(name, _) => (
+        ErrorCode::DuplicateIdentifier,
+        format!("Duplicate map name: '{}'", name),
+    ),
+
+    crate::sema::map::MapValidationError::InvalidMaxEntries(_) => (
+        ErrorCode::InvalidMapDeclaration,
+        "Map 'max_entries' must be greater than zero".to_string(),
+    ),
+
+    crate::sema::map::MapValidationError::InvalidType(_) => (
+        ErrorCode::InvalidMapType,
+        "Invalid map type".to_string(),
+    ),
+
+    crate::sema::map::MapValidationError::UnknownMapName(name, _) => (
+        ErrorCode::InvalidMapDeclaration, // change if you have a better code
+        format!("Unknown map '{}'", name),
+    ),
+
+    crate::sema::map::MapValidationError::UnknownMapMethod(method, _) => (
+        ErrorCode::InvalidMapDeclaration, // change if you have a better code
+        format!("Unknown map method '{}'", method),
+    ),
+
+    crate::sema::map::MapValidationError::InvalidMapMethodArity(method, expected, got, _) => (
+        ErrorCode::InvalidMapDeclaration, // change if you have a better code
+        format!("Map method '{}' expects {} args, got {}", method, expected, got),
+    ),
+},
             crate::sema::SemanticError::UnitError(ue) => match ue {
-                crate::sema::unit::UnitValidationError::EmptyUnitName(_)
-                => (ErrorCode::InvalidProgramType, "Unit name cannot be empty".to_string()),
-                crate::sema::unit::UnitValidationError::NoSections(_)
-                => (ErrorCode::InvalidSectionType, "Unit must have at least one section".to_string()),
-                crate::sema::unit::UnitValidationError::InvalidSection(_)
-                => (ErrorCode::InvalidSectionType, "Invalid section name".to_string()),
-                crate::sema::unit::UnitValidationError::MissingLicense(_)
-                => (ErrorCode::InvalidProgramType, "License is required for eBPF programs".to_string()),
-                crate::sema::unit::UnitValidationError::NoReturnOrInstructions(_)
-                => (ErrorCode::InvalidProgramType, "Unit must have at least one return statement or instruction".to_string()),
+                crate::sema::unit::UnitValidationError::EmptyUnitName(_) => (
+                    ErrorCode::InvalidProgramType,
+                    "Unit name cannot be empty".to_string(),
+                ),
+                crate::sema::unit::UnitValidationError::NoSections(_) => (
+                    ErrorCode::InvalidSectionType,
+                    "Unit must have at least one section".to_string(),
+                ),
+                crate::sema::unit::UnitValidationError::InvalidSection(_) => (
+                    ErrorCode::InvalidSectionType,
+                    "Invalid section name".to_string(),
+                ),
+                crate::sema::unit::UnitValidationError::MissingLicense(_) => (
+                    ErrorCode::InvalidProgramType,
+                    "License is required for eBPF programs".to_string(),
+                ),
+                crate::sema::unit::UnitValidationError::NoReturnOrInstructions(_) => (
+                    ErrorCode::InvalidProgramType,
+                    "Unit must have at least one return statement or instruction".to_string(),
+                ),
             },
         };
 
@@ -192,10 +226,7 @@ pub fn compile(input_path: &Path, _output_path: &Path) -> Result<(), miette::Rep
         .map_err(|e| miette::miette!("{}", e))
         .wrap_err("Build failed")?;
 
-    let file_stem = input_path
-        .file_stem()
-        .unwrap()
-        .to_string_lossy();
+    let file_stem = input_path.file_stem().unwrap().to_string_lossy();
 
     let output = build_dir.join(format!("{file_stem}.o"));
 

@@ -1,7 +1,11 @@
-use super::{Parser, ParseError};
-use crate::{ast::{
-    Assignment, AssignmentOp,  Expr, ExprKind, HeapLookup, HeapVarDecl, IfGuard, MethodCall, Stmt, StmtKind, Unit, VarDecl, VarType
-}, parser::{TokenKind, map::expect_token}};
+use super::{ParseError, Parser};
+use crate::{
+    ast::{
+        Assignment, AssignmentOp, Expr, ExprKind, HeapVarDecl, IfGuard, MethodCall, Stmt, StmtKind,
+        Unit, VarDecl, VarType,
+    },
+    parser::{map::expect_token, TokenKind},
+};
 use std::boxed::Box;
 
 pub fn parse_unit(parser: &mut Parser) -> Result<Unit, ParseError> {
@@ -19,7 +23,7 @@ pub fn parse_unit(parser: &mut Parser) -> Result<Unit, ParseError> {
         if parser.r#match(TokenKind::KeywordSection) {
             expect_token(parser, TokenKind::Colon)?;
             let s = parser.expect(TokenKind::StringLiteral)?;
-            
+
             let txt = s.lexeme.trim_matches('"').to_string();
             sections.push(txt);
             expect_token(parser, TokenKind::Semicolon)?;
@@ -29,7 +33,7 @@ pub fn parse_unit(parser: &mut Parser) -> Result<Unit, ParseError> {
         if parser.r#match(TokenKind::KeywordLicense) {
             expect_token(parser, TokenKind::Colon)?;
             let s = parser.expect(TokenKind::StringLiteral)?;
-            
+
             let txt = s.lexeme.trim_matches('"').to_string();
             license = Some(txt);
             expect_token(parser, TokenKind::Semicolon)?;
@@ -41,8 +45,8 @@ pub fn parse_unit(parser: &mut Parser) -> Result<Unit, ParseError> {
 
     expect_token(parser, TokenKind::RBrace)?;
 
-    // Determine the program kind from the sections
-    let kind = sections.first()
+    let kind = sections
+        .first()
         .map(|s| crate::ast::unit::ProgramKind::from_section(s))
         .unwrap_or(crate::ast::unit::ProgramKind::Unknown);
 
@@ -57,6 +61,7 @@ pub fn parse_unit(parser: &mut Parser) -> Result<Unit, ParseError> {
 }
 
 fn parse_stmt(parser: &mut Parser, body: &mut Vec<Stmt>) -> Result<(), ParseError> {
+    // reg x = expr;
     if parser.r#match(TokenKind::KeywordReg) {
         let var_loc = parser.current_loc();
         let var_name_tok = parser.expect(TokenKind::Identifier)?;
@@ -75,6 +80,7 @@ fn parse_stmt(parser: &mut Parser, body: &mut Vec<Stmt>) -> Result<(), ParseErro
         return Ok(());
     }
 
+    // imm x = expr;
     if parser.r#match(TokenKind::KeywordImm) {
         let var_loc = parser.current_loc();
         let var_name_tok = parser.expect(TokenKind::Identifier)?;
@@ -93,37 +99,26 @@ fn parse_stmt(parser: &mut Parser, body: &mut Vec<Stmt>) -> Result<(), ParseErro
         return Ok(());
     }
 
+    // heap x = expr;   (ex: heap v = map.lookup(k);)
     if parser.r#match(TokenKind::KeywordHeap) {
         let var_loc = parser.current_loc();
         let var_name_tok = parser.expect(TokenKind::Identifier)?;
         expect_token(parser, TokenKind::Equals)?;
 
-        let map_name_tok = parser.expect(TokenKind::Identifier)?;
-        expect_token(parser, TokenKind::Dot)?;
-        let lookup_tok = parser.expect(TokenKind::Identifier)?;
-        
-        if lookup_tok.lexeme != "lookup" {
-            return Err(parser.error(format!("Expected 'lookup' method, found: {}", lookup_tok.lexeme)));
-        }
-
-        expect_token(parser, TokenKind::LParen)?;
-        let key_expr = parse_expr(parser)?;
-        expect_token(parser, TokenKind::RParen)?;
+        let init = parse_expr(parser)?;
         expect_token(parser, TokenKind::Semicolon)?;
 
         body.push(Stmt {
             kind: StmtKind::HeapVarDecl(HeapVarDecl {
                 name: var_name_tok.lexeme,
-                lookup: HeapLookup {
-                    map_name: map_name_tok.lexeme,
-                    key_expr: Box::new(key_expr),
-                },
+                init,
             }),
             loc: var_loc,
         });
         return Ok(());
     }
 
+    // return expr;
     if parser.r#match(TokenKind::KeywordReturn) {
         let return_loc = parser.current_loc();
         let v = parse_expr(parser)?;
@@ -136,6 +131,7 @@ fn parse_stmt(parser: &mut Parser, body: &mut Vec<Stmt>) -> Result<(), ParseErro
         return Ok(());
     }
 
+    // if guard(x) { ... } [else { ... }]
     if parser.r#match(TokenKind::KeywordIf) {
         let if_loc = parser.current_loc();
         expect_token(parser, TokenKind::KeywordGuard)?;
@@ -144,10 +140,23 @@ fn parse_stmt(parser: &mut Parser, body: &mut Vec<Stmt>) -> Result<(), ParseErro
         expect_token(parser, TokenKind::RParen)?;
         expect_token(parser, TokenKind::LBrace)?;
 
-        let mut guard_body = Vec::new();
+        // THEN body
+        let mut then_body = Vec::new();
         while !parser.r#match(TokenKind::RBrace) {
-            parse_stmt(parser, &mut guard_body)?;
+            parse_stmt(parser, &mut then_body)?;
         }
+
+        // ELSE body (optional)
+        let else_body = if parser.r#match(TokenKind::KeywordElse) {
+            expect_token(parser, TokenKind::LBrace)?;
+            let mut eb = Vec::new();
+            while !parser.r#match(TokenKind::RBrace) {
+                parse_stmt(parser, &mut eb)?;
+            }
+            Some(eb)
+        } else {
+            None
+        };
 
         body.push(Stmt {
             kind: StmtKind::IfGuard(IfGuard {
@@ -155,19 +164,24 @@ fn parse_stmt(parser: &mut Parser, body: &mut Vec<Stmt>) -> Result<(), ParseErro
                     kind: ExprKind::Variable(var_tok.lexeme.clone()),
                     loc: var_tok.loc,
                 },
-                body: guard_body,
+                then_body,
+                else_body,
             }),
             loc: if_loc,
         });
+
         return Ok(());
     }
 
+    // assignment OR expr-statement
     let target = parse_expr(parser)?;
     let target_loc = target.loc;
+
+    // target = expr;
     if parser.r#match(TokenKind::Equals) {
         let value = parse_expr(parser)?;
         expect_token(parser, TokenKind::Semicolon)?;
-        
+
         body.push(Stmt {
             kind: StmtKind::Assignment(Assignment {
                 target: Box::new(target),
@@ -177,10 +191,13 @@ fn parse_stmt(parser: &mut Parser, body: &mut Vec<Stmt>) -> Result<(), ParseErro
             loc: target_loc,
         });
         return Ok(());
-    } else if parser.r#match(TokenKind::PlusEquals) {
+    }
+
+    // target += expr;
+    if parser.r#match(TokenKind::PlusEquals) {
         let value = parse_expr(parser)?;
         expect_token(parser, TokenKind::Semicolon)?;
-        
+
         body.push(Stmt {
             kind: StmtKind::Assignment(Assignment {
                 target: Box::new(target),
@@ -192,7 +209,14 @@ fn parse_stmt(parser: &mut Parser, body: &mut Vec<Stmt>) -> Result<(), ParseErro
         return Ok(());
     }
 
-    Err(parser.error("Unexpected statement: expected reg, imm, heap, return, if, or expression"))
+    // NEW: expression statement: expr;
+    // Example: map.update(k, v);  map.delete(k);
+    expect_token(parser, TokenKind::Semicolon)?;
+    body.push(Stmt {
+        kind: StmtKind::ExprStmt(Box::new(target)),
+        loc: target_loc,
+    });
+    Ok(())
 }
 
 pub fn parse_expr(parser: &mut Parser) -> Result<Expr, ParseError> {
@@ -237,7 +261,6 @@ fn parse_add(parser: &mut Parser) -> Result<Expr, ParseError> {
     Ok(expr)
 }
 
-// * / %
 fn parse_mul(parser: &mut Parser) -> Result<Expr, ParseError> {
     let mut expr = parse_unary(parser)?;
 
@@ -290,7 +313,6 @@ fn parse_mul(parser: &mut Parser) -> Result<Expr, ParseError> {
     Ok(expr)
 }
 
-// unary: *expr (dereference)
 fn parse_unary(parser: &mut Parser) -> Result<Expr, ParseError> {
     if parser.r#match(TokenKind::Star) {
         let inner = parse_unary(parser)?;
@@ -318,48 +340,50 @@ fn parse_primary(parser: &mut Parser) -> Result<Expr, ParseError> {
         });
     }
 
-    // parenthesized expression: (expr)
+    // (expr)
     if parser.r#match(TokenKind::LParen) {
         let e = parse_expr(parser)?;
         expect_token(parser, TokenKind::RParen)?;
         return Ok(e);
     }
 
-    // identifier (variable, method call, or function call)
+    // identifier
     let ident_tok = parser.expect(TokenKind::Identifier)?;
 
-    // method call: receiver.method(arg)
+    // receiver.method(arg1, arg2, ...)
     if parser.r#match(TokenKind::Dot) {
         let method_tok = parser.expect(TokenKind::Identifier)?;
         expect_token(parser, TokenKind::LParen)?;
-        
-        // parse optional argument
-        let arg = if !parser.check(TokenKind::RParen) {
-            Some(Box::new(parse_expr(parser)?))
-        } else {
-            None
-        };
-        
+
+        let mut args = Vec::new();
+        if !parser.check(TokenKind::RParen) {
+            loop {
+                args.push(parse_expr(parser)?);
+                if parser.r#match(TokenKind::Comma) {
+                    continue;
+                }
+                break;
+            }
+        }
+
         expect_token(parser, TokenKind::RParen)?;
 
         return Ok(Expr {
             kind: ExprKind::MethodCall(MethodCall {
                 receiver: ident_tok.lexeme,
                 method: method_tok.lexeme,
-                arg,
+                arg: args, // NOTE: matches your AST field name `arg`
             }),
             loc: ident_tok.loc,
         });
     }
-    
+
+    // function call: name(arg1, arg2, ...)
     if parser.r#match(TokenKind::LParen) {
         let mut args = Vec::new();
-
-        // parse arguments if any
         if !parser.check(TokenKind::RParen) {
             loop {
                 args.push(parse_expr(parser)?);
-
                 if parser.r#match(TokenKind::Comma) {
                     continue;
                 } else {
@@ -377,7 +401,8 @@ fn parse_primary(parser: &mut Parser) -> Result<Expr, ParseError> {
             loc: ident_tok.loc,
         });
     }
-    
+
+    // variable
     Ok(Expr {
         kind: ExprKind::Variable(ident_tok.lexeme),
         loc: ident_tok.loc,
@@ -385,7 +410,7 @@ fn parse_primary(parser: &mut Parser) -> Result<Expr, ParseError> {
 }
 
 fn parse_shift(parser: &mut Parser) -> Result<Expr, ParseError> {
-    let mut expr = parse_mul(parser)?; 
+    let mut expr = parse_mul(parser)?;
 
     loop {
         if parser.r#match(TokenKind::Shl) {

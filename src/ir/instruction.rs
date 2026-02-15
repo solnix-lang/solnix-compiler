@@ -15,13 +15,24 @@ pub struct VarId(pub u32);
 #[derive(Debug, Clone)]
 pub enum Opcode {
     HelperCall { id: u32 },
+
+    // memory
     LoadKey,
     Store { size: u8 },
+
+    // ctx
     LoadCtx { offset: i32, size: u8 },
     LoadPacket { offset: i32, size: u8 },
+
+    // checks
     NullCheck,
+
+    // alu
     Binary { op: BinaryOp },
-    CallMap { map_name: String },
+
+    // maps
+    CallMap { map_name: String },      // lookup -> returns pointer (u64)
+    UpdateMap { map_name: String },    // update(key, value) -> returns status (u64)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

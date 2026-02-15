@@ -6,6 +6,6 @@ pub mod unit;
 pub use program::Program;
 pub use map::{MapDecl, MapType, Type};
 pub use unit::{
-    Assignment, AssignmentOp, Expr, ExprKind, HeapLookup, HeapVarDecl,
+    Assignment, AssignmentOp, Expr, ExprKind, HeapVarDecl,
     IfGuard, MethodCall, Stmt, StmtKind, Unit, VarDecl, VarType,BinaryExpr, BinOp, CallExpr
 };

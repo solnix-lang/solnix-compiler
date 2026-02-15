@@ -86,21 +86,4 @@ impl SectionValidator {
 
         chars.all(|c| c.is_alphanumeric() || c == '_' || c == '.')
     }
-
-    pub fn valid_formats() -> &'static str {
-        r#"Valid eBPF section formats:
-  Networking:
-    - xdp, xdp/ingress, xdp/egress, xdp/frags...
-    - tc, tcx/ingress, tcx/egress, classifier, action
-  Tracepoints (Static):
-    - tracepoint/<cat>/<event> (or tp/<cat>/<event>)
-    - raw_tracepoint/<event>   (or raw_tp/<event>)
-    - tp_btf/<event>           (Modern/Fast)
-  Probes (Dynamic):
-    - kprobe/<func>, kretprobe/<func>
-    - uprobe/<sym>, uretprobe/<sym>
-  Infrastructure:
-    - maps, license, version
-"#
-    }
 }

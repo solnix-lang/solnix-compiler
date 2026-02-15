@@ -27,6 +27,7 @@ pub enum StmtKind {
     HeapVarDecl(HeapVarDecl),
     Assignment(Assignment),
     IfGuard(IfGuard),
+    ExprStmt(Box<Expr>)
 }
 
 #[derive(Debug, Clone)]
@@ -65,7 +66,8 @@ pub enum AssignmentOp {
 #[derive(Debug, Clone)]
 pub struct IfGuard {
     pub condition: Expr,
-    pub body: Vec<Stmt>,
+    pub then_body: Vec<Stmt>,
+    pub else_body: Option<Vec<Stmt>>,
 }
 
 #[derive(Debug, Clone)]
@@ -138,15 +140,17 @@ pub struct HeapLookup {
 pub struct MethodCall {
     pub receiver: String,
     pub method: String,
-    pub arg: Option<Box<Expr>>,
+    pub arg: Vec<Expr>,
 }
 
 #[derive(Debug, Clone)]
 #[allow(unused)]
 pub struct HeapVarDecl {
     pub name: String,
-    pub lookup: HeapLookup,
+    pub init: Expr,
 }
+
+
 
 impl ProgramKind {
     pub fn from_section(section: &str) -> Self {

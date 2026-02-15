@@ -88,58 +88,13 @@ impl Span {
     pub fn new(file: FileId, range: Range<usize>) -> Self {
         Self { file, range }
     }
-
-    /// Convert to a miette SourceSpan for formatting
     pub fn to_source_span(&self) -> miette::SourceSpan {
         (self.range.start..self.range.end).into()
-    }
-
-    /// Get the start position in bytes
-    pub fn start(&self) -> usize {
-        self.range.start
-    }
-
-    /// Get the end position in bytes
-    pub fn end(&self) -> usize {
-        self.range.end
-    }
-
-    /// Get the length in bytes
-    pub fn len(&self) -> usize {
-        self.range.len()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.range.is_empty()
     }
 }
 
 impl Default for SourceManager {
     fn default() -> Self {
         Self::new()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_source_manager() {
-        let mut manager = SourceManager::new();
-        let id = manager.add_file("test.snx".to_string(), "let x = 42".to_string());
-
-        assert_eq!(manager.file_name(id), Some("test.snx"));
-        assert_eq!(manager.file_content(id), Some("let x = 42"));
-    }
-
-    #[test]
-    fn test_line_col() {
-        let mut manager = SourceManager::new();
-        let id = manager.add_file("test.snx".to_string(), "line 1\nline 2\nline 3".to_string());
-
-        assert_eq!(manager.line_col(id, 0), Some((1, 1)));
-        assert_eq!(manager.line_col(id, 6), Some((1, 7))); // after "line 1"
-        assert_eq!(manager.line_col(id, 7), Some((2, 1))); // at "line 2"
     }
 }

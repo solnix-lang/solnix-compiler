@@ -4,18 +4,28 @@ use crate::parser::SourceLoc;
 use std::collections::HashSet;
     
 
+
 #[derive(Debug, thiserror::Error)]
 pub enum MapValidationError {
     #[error("Duplicate map name: {0}")]
     DuplicateMapName(String, SourceLoc),
-    
+
     #[error("Map 'max_entries' must be greater than zero")]
     InvalidMaxEntries(SourceLoc),
-    
+
     #[error("Invalid map type")]
     InvalidType(SourceLoc),
-}
 
+    // NEW:
+    #[error("Unknown map method '{0}'")]
+    UnknownMapMethod(String, SourceLoc),
+
+    #[error("Map method '{0}' expects {1} args, got {2}")]
+    InvalidMapMethodArity(String, usize, usize, SourceLoc),
+
+    #[error("Unknown map '{0}'")]
+    UnknownMapName(String, SourceLoc),
+}
 
 
 pub fn check_map(map_decl: &MapDecl, map_names: &mut HashSet<String>) -> Result<(), MapValidationError> {

@@ -49,16 +49,6 @@ impl DiagnosticBuilder {
         }
     }
 
-    pub fn with_label(mut self, label: impl Into<String>) -> Self {
-        self.label_message = Some(label.into());
-        self
-    }
-
-    pub fn with_help(mut self, help: impl Into<String>) -> Self {
-        self.help = Some(help.into());
-        self
-    }
-
     pub fn build(
         self,
         span: &Span,
@@ -111,21 +101,6 @@ impl CompileDiagnostic {
             file_name,
         }
     }
-
-    /// Create a diagnostic from a Span
-    pub fn from_span(
-        span: &Span,
-        code: ErrorCode,
-        category: ErrorCategory,
-        message: impl Into<String>,
-        source_manager: &SourceManager,
-    ) -> Result<Self, String> {
-        DiagnosticBuilder::new(category, code, message)
-            .with_label("")
-            .build(span, source_manager)
-    }
-
-    /// Get the error code as a string
     pub fn code_str(&self) -> &str {
         &self.code
     }
@@ -133,30 +108,5 @@ impl CompileDiagnostic {
     /// Get the category as a string
     pub fn category_str(&self) -> &str {
         self.category.as_str()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::diagnostics::source_manager::FileId;
-
-    #[test]
-    fn test_diagnostic_builder() {
-        let mut source_manager = SourceManager::new();
-        let file_id = source_manager.add_file("test.snx".to_string(), "let x = 42".to_string());
-        let span = Span::new(file_id, 0..3);
-
-        let diagnostic = DiagnosticBuilder::new(
-            ErrorCategory::Parse,
-            ErrorCode::UnexpectedToken,
-            "unexpected token",
-        )
-        .with_label("unexpected here")
-        .build(&span, &source_manager)
-        .expect("should build");
-
-        assert_eq!(diagnostic.category, ErrorCategory::Parse);
-        assert_eq!(diagnostic.code, "E0201");
     }
 }

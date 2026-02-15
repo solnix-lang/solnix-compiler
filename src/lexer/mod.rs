@@ -128,6 +128,7 @@ impl<'src> Lexer<'src> {
             "value" => crate::parser::TokenKind::KeywordValue,
             "max" => crate::parser::TokenKind::KeywordMax,
             "if" => crate::parser::TokenKind::KeywordIf,
+            "else" => crate::parser::TokenKind::KeywordElse,
             "guard" => crate::parser::TokenKind::KeywordGuard,
             "heap" => crate::parser::TokenKind::KeywordHeap,
             "u32" => crate::parser::TokenKind::TypeU32,
@@ -198,7 +199,11 @@ impl<'src> Lexer<'src> {
         }
 
         let lexeme = &self.src[start..self.index];
-        Ok(crate::parser::Token::new_number(lexeme.to_string(), loc, value))
+        Ok(crate::parser::Token::new_number(
+            lexeme.to_string(),
+            loc,
+            value,
+        ))
     }
 
     fn read_string(&mut self) -> Result<crate::parser::Token, LexError> {
@@ -322,6 +327,7 @@ impl<'src> Lexer<'src> {
                 self.advance();
                 Ok(crate::parser::Token::new(TokenKind::RParen, ")", loc))
             }
+
             ':' => {
                 self.advance();
                 Ok(crate::parser::Token::new(TokenKind::Colon, ":", loc))
@@ -329,6 +335,10 @@ impl<'src> Lexer<'src> {
             '.' => {
                 self.advance();
                 Ok(crate::parser::Token::new(TokenKind::Dot, ".", loc))
+            }
+            ',' => {
+                self.advance();
+                Ok(crate::parser::Token::new(TokenKind::Comma, ",", loc))
             }
             ';' => {
                 self.advance();
@@ -380,7 +390,11 @@ impl<'src> Lexer<'src> {
                 self.advance();
                 if self.peek() == '=' {
                     self.advance();
-                    Ok(crate::parser::Token::new(TokenKind::PercentEquals, "%=", loc))
+                    Ok(crate::parser::Token::new(
+                        TokenKind::PercentEquals,
+                        "%=",
+                        loc,
+                    ))
                 } else {
                     Ok(crate::parser::Token::new(TokenKind::Percent, "%", loc))
                 }
