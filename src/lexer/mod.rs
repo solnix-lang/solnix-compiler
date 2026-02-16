@@ -116,26 +116,28 @@ impl<'src> Lexer<'src> {
         let lexeme = &self.src[start..self.index];
 
         let kind = match lexeme {
-            "unit" => crate::parser::TokenKind::KeywordUnit,
-            "section" => crate::parser::TokenKind::KeywordSection,
-            "license" => crate::parser::TokenKind::KeywordLicense,
-            "return" => crate::parser::TokenKind::KeywordReturn,
-            "reg" => crate::parser::TokenKind::KeywordReg,
-            "imm" => crate::parser::TokenKind::KeywordImm,
-            "map" => crate::parser::TokenKind::KeywordMap,
-            "type" => crate::parser::TokenKind::KeywordType,
-            "key" => crate::parser::TokenKind::KeywordKey,
-            "value" => crate::parser::TokenKind::KeywordValue,
-            "max" => crate::parser::TokenKind::KeywordMax,
-            "if" => crate::parser::TokenKind::KeywordIf,
-            "else" => crate::parser::TokenKind::KeywordElse,
-            "guard" => crate::parser::TokenKind::KeywordGuard,
-            "heap" => crate::parser::TokenKind::KeywordHeap,
-            "u32" => crate::parser::TokenKind::TypeU32,
-            "u64" => crate::parser::TokenKind::TypeU64,
-            "i32" => crate::parser::TokenKind::TypeI32,
-            "i64" => crate::parser::TokenKind::TypeI64,
-            _ => crate::parser::TokenKind::Identifier,
+            "unit" => TokenKind::KeywordUnit,
+            "section" => TokenKind::KeywordSection,
+            "license" => TokenKind::KeywordLicense,
+            "return" => TokenKind::KeywordReturn,
+            "reg" => TokenKind::KeywordReg,
+            "imm" => TokenKind::KeywordImm,
+            "map" => TokenKind::KeywordMap,
+            "type" => TokenKind::KeywordType,
+            "key" => TokenKind::KeywordKey,
+            "value" => TokenKind::KeywordValue,
+            "max" => TokenKind::KeywordMax,
+            "if" => TokenKind::KeywordIf,
+            "else" => TokenKind::KeywordElse,
+            "guard" => TokenKind::KeywordGuard,
+            "heap" => TokenKind::KeywordHeap,
+            "event" => TokenKind::KeywordEvent,
+            "bytes" => TokenKind::KeywordBytes, // ADD THIS
+            "u32" => TokenKind::TypeU32,
+            "u64" => TokenKind::TypeU64,
+            "i32" => TokenKind::TypeI32,
+            "i64" => TokenKind::TypeI64,
+            _ => TokenKind::Identifier,
         };
 
         crate::parser::Token::new(kind, lexeme.to_string(), loc)
@@ -400,6 +402,33 @@ impl<'src> Lexer<'src> {
                 }
             }
 
+            '<' => {
+                self.advance();
+                if self.peek() == '<' {
+                    self.advance();
+                    Ok(crate::parser::Token::new(TokenKind::Shl, "<<", loc))
+                } else {
+                    Err((loc, "Unexpected character '<'".to_string()))
+                }
+            }
+
+            '>' => {
+                self.advance();
+                if self.peek() == '>' {
+                    self.advance();
+                    Ok(crate::parser::Token::new(TokenKind::Shr, ">>", loc))
+                } else {
+                    Err((loc, "Unexpected character '>'".to_string()))
+                }
+            }
+            '[' => {
+                self.advance();
+                Ok(crate::parser::Token::new(TokenKind::LBracket, "[", loc))
+            }
+            ']' => {
+                self.advance();
+                Ok(crate::parser::Token::new(TokenKind::RBracket, "]", loc))
+            }
             _ => Err((loc, "Invalid character".to_string())),
         }
     }

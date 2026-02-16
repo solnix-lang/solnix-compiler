@@ -3,6 +3,7 @@ pub mod parser;
 pub mod program;
 pub mod map;
 pub mod unit;
+pub mod event;
 
 pub use token::{Token, TokenKind, SourceLoc};
 pub use parser::{Parser, ParseError};

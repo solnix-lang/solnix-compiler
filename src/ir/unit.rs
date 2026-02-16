@@ -13,11 +13,9 @@ pub struct UnitIr {
     pub next_var_id: u32,
     pub program_type: ProgramKind,
 
-    // ✅ Production fix: block-id generator (no collisions)
     next_block_id: u32,
 }
 
-#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct BasicBlock {
     pub id: BlockId,
@@ -28,7 +26,6 @@ pub struct BasicBlock {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct BlockId(pub u32);
 
-#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub enum Terminator {
     Return(Operand),
@@ -42,7 +39,6 @@ pub enum Terminator {
 
 struct LowerCtx {
     vars: std::collections::HashMap<String, VarId>,
-    // Track which variables are map pointers (from CallMap operations)
     map_ptr_vars: std::collections::HashSet<VarId>,
 }
 
@@ -105,7 +101,7 @@ fn lower_ctx_helper(
     let (helper_id, result_type) = match method {
         CtxMethod::GetPidTgid => (14, crate::ast::Type::U64),
         CtxMethod::GetUidGid => (15, crate::ast::Type::U64),
-        CtxMethod::GetCurrentComm => (16, crate::ast::Type::U64), // design choice in your IR
+        CtxMethod::GetCurrentComm => (16, crate::ast::Type::U64),
         CtxMethod::GetCurrentTask => (35, crate::ast::Type::U64),
         CtxMethod::GetKtimeNs => (5, crate::ast::Type::U64),
 
@@ -169,7 +165,6 @@ fn lower_statement(
         }
 
         StmtKind::HeapVarDecl(heap_decl) => {
-            // heap variables must be initialized with: <map>.lookup(<key>)
             let (map_name, key_expr) = match &heap_decl.init.kind {
                 ExprKind::MethodCall(call) if call.method == "lookup" => {
                     if call.arg.len() != 1 {
@@ -220,11 +215,8 @@ fn lower_statement(
                             operands: vec![ptr.clone()],
                             result_type: crate::ast::Type::U64,
                         });
-                        // If you want strict verifier-safe behavior, your backend can
-                        // translate NullCheck into branch+exit. Current IR assumes ok.
                     }
 
-                    // Handle compound ops for deref: *p += v, *p -= v, etc.
                     let final_value = match assign.op {
                         crate::ast::AssignmentOp::Assign => value,
 
@@ -354,8 +346,6 @@ fn lower_statement(
                 true_block: then_id,
                 false_block: else_id,
             };
-
-            // push current block now (it is terminated)
             let finished = std::mem::replace(
                 block,
                 BasicBlock {
@@ -381,8 +371,6 @@ fn lower_statement(
             ) {
                 tb.terminator = Terminator::Jump(merge_id);
             }
-
-            // ELSE block (only emit statements if else exists)
             let mut eb = BasicBlock {
                 id: else_id,
                 instructions: Vec::new(),
@@ -402,7 +390,6 @@ fn lower_statement(
 
             ir.blocks.push(tb);
             ir.blocks.push(eb);
-            // continue in merge (block already replaced above)
         }
 
         StmtKind::ExprStmt(expr) => {
@@ -411,10 +398,6 @@ fn lower_statement(
     }
     Ok(())
 }
-
-// ------------------------
-// Expressions
-// ------------------------
 
 fn lower_expr(
     expr: &Expr,
@@ -432,7 +415,6 @@ fn lower_expr(
 
         ExprKind::Number(n) => Ok(Operand::Immediate(*n)),
 
-        // map.lookup(key) alternative AST form
         ExprKind::HeapLookup(hl) => {
             let key = lower_expr(&hl.key_expr, ctx, ir, block)?;
             let result = ir.alloc_var(crate::ast::Type::U64);
@@ -451,9 +433,6 @@ fn lower_expr(
         }
 
         ExprKind::MethodCall(call) => {
-            // ----------------------------
-            // ctx.<method>()
-            // ----------------------------
             if call.receiver == "ctx" {
                 let method = CtxMethod::from_str(&call.method).ok_or_else(|| {
                     LoweringError::UnitLowering(format!("Unknown ctx method: {}", call.method))
@@ -465,8 +444,6 @@ fn lower_expr(
                         method, ir.program_type
                     )));
                 }
-
-                // IMPORTANT: return here so we don't fall through to map.<method>()
                 return match method {
                     // ctx.load_*(offset)
                     CtxMethod::LoadU8
@@ -641,8 +618,6 @@ fn lower_expr(
 
             Ok(Operand::Var(result))
         }
-
-        // get_pid_tgid() style
         ExprKind::Call(call) => {
             let method = CtxMethod::from_str(&call.name).ok_or_else(|| {
                 LoweringError::UnitLowering(format!("Unknown builtin function: {}", call.name))

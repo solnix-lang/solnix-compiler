@@ -1,7 +1,3 @@
-//! Error codes for the Solnix compiler
-//!
-//! Each compilation error has a unique code (E0XXX) to help users
-//! find documentation and solutions online.
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ErrorCode {

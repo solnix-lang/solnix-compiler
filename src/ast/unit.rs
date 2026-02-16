@@ -7,7 +7,7 @@ pub struct Unit {
     pub name: String,
     pub loc: SourceLoc,
     pub sections: Vec<String>,
-    pub kind: ProgramKind,   
+    pub kind: ProgramKind,
     pub license: Option<String>,
     pub body: Vec<Stmt>,
 }
@@ -27,7 +27,7 @@ pub enum StmtKind {
     HeapVarDecl(HeapVarDecl),
     Assignment(Assignment),
     IfGuard(IfGuard),
-    ExprStmt(Box<Expr>)
+    ExprStmt(Box<Expr>),
 }
 
 #[derive(Debug, Clone)]
@@ -101,8 +101,13 @@ pub struct CallExpr {
     pub args: Vec<Expr>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UnaryOp {
+    Neg,    // -
+    Not,    // !
+}
+
 #[derive(Debug, Clone)]
-#[allow(unused)]
 pub enum ExprKind {
     Variable(String),
     Number(i64),
@@ -111,10 +116,17 @@ pub enum ExprKind {
     Dereference(Box<Expr>),
     Binary(BinaryExpr),
     Call(CallExpr),
+    Integer(i64),
+    Bool(bool),
+    Identifier(String),
+    SizeOf {
+        name: String,
+    },
+    
+
 }
 
 #[derive(Debug, Clone)]
-#[allow(unused)]
 pub struct VarDecl {
     pub name: String,
     pub var_type: VarType,
@@ -129,14 +141,12 @@ pub enum VarType {
 }
 
 #[derive(Debug, Clone)]
-#[allow(unused)]
 pub struct HeapLookup {
     pub map_name: String,
     pub key_expr: Box<Expr>,
 }
 
 #[derive(Debug, Clone)]
-#[allow(unused)]
 pub struct MethodCall {
     pub receiver: String,
     pub method: String,
@@ -144,13 +154,10 @@ pub struct MethodCall {
 }
 
 #[derive(Debug, Clone)]
-#[allow(unused)]
 pub struct HeapVarDecl {
     pub name: String,
     pub init: Expr,
 }
-
-
 
 impl ProgramKind {
     pub fn from_section(section: &str) -> Self {
@@ -197,7 +204,21 @@ impl ProgramKind {
 
             ProgramKind::Kprobe => &[LoadU64, GetPidTgid, GetUidGid],
 
-            ProgramKind::Tracepoint => &[LoadU64, GetPidTgid],
+            ProgramKind::Tracepoint => &[
+                LoadU8,
+                LoadU16,
+                LoadU32,
+                LoadU64,
+                LoadI8,
+                LoadI16,
+                LoadI32,
+                LoadI64,
+                GetPidTgid,
+                GetUidGid,
+                GetCurrentComm,
+                GetCurrentTask,
+                GetKtimeNs,
+            ],
 
             ProgramKind::RawTracepoint => &[LoadU64],
 

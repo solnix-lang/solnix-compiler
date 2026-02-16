@@ -44,6 +44,7 @@ pub enum TokenKind {
     KeywordElse,
     KeywordGuard,
     KeywordHeap,
+    KeywordEvent,
 
     // Map types
     MapTypeHash,
@@ -67,6 +68,8 @@ pub enum TokenKind {
     Dot,
     Comma,
     Semicolon,
+    LBracket,
+    RBracket,
 
     // Assignment
     Equals,
@@ -89,6 +92,9 @@ pub enum TokenKind {
     Identifier,
     StringLiteral,
     Number,
+
+    // Event-specific
+    KeywordBytes,
 
     // End of file
     Eof,
@@ -114,6 +120,7 @@ impl TokenKind {
                 | Self::KeywordElse
                 | Self::KeywordGuard
                 | Self::KeywordHeap
+                | Self::KeywordEvent
         )
     }
 
@@ -157,6 +164,7 @@ impl fmt::Display for TokenKind {
             Self::KeywordElse => write!(f, "else"),
             Self::KeywordGuard => write!(f, "guard"),
             Self::KeywordHeap => write!(f, "heap"),
+            Self::KeywordEvent => write!(f, "event"),
 
             // Map types
             Self::MapTypeHash => write!(f, "hash"),
@@ -202,6 +210,10 @@ impl fmt::Display for TokenKind {
             Self::Identifier => write!(f, "identifier"),
             Self::StringLiteral => write!(f, "string literal"),
             Self::Number => write!(f, "number"),
+
+            Self::LBracket => write!(f, "["),
+            Self::RBracket => write!(f, "]"),
+            Self::KeywordBytes => write!(f, "bytes"),
 
             // EOF
             Self::Eof => write!(f, "end of file"),
