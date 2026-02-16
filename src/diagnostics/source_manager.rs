@@ -1,29 +1,23 @@
-//! Source file and span management
-//!
-//! Tracks source files and provides utilities for converting between
-//! different span representations.
+
 
 use std::collections::HashMap;
 use std::ops::Range;
 
-/// Unique identifier for a source file
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct FileId(pub u32);
 
-/// A location in a source file
+
 #[derive(Debug, Clone)]
 pub struct Span {
     pub file: FileId,
     pub range: Range<usize>,
 }
 
-/// Metadata about a source file
 pub struct SourceFile {
     pub name: String,
     pub content: String,
 }
 
-/// Manages source files and their metadata
 pub struct SourceManager {
     files: HashMap<FileId, SourceFile>,
     next_id: u32,

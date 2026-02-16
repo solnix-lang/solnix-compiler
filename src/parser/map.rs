@@ -1,5 +1,8 @@
-use super::{Parser, ParseError};
-use crate::{ast::{MapDecl, MapType, Type}, parser::TokenKind};
+use super::{ParseError, Parser};
+use crate::{
+    ast::{MapDecl, MapType, Type},
+    parser::TokenKind,
+};
 
 pub fn parse_map(parser: &mut Parser) -> Result<MapDecl, ParseError> {
     let map_loc = parser.current_loc();
@@ -46,53 +49,60 @@ pub fn parse_map(parser: &mut Parser) -> Result<MapDecl, ParseError> {
             value_type = Some(parse_type(parser)?);
             expect_token(parser, TokenKind::Semicolon)?;
             continue;
-        }        
+        }
         if parser.r#match(TokenKind::KeywordMax) {
             expect_token(parser, TokenKind::Colon)?;
-            let n = parser.expect(TokenKind::Number)?;
-            
-            let max = n.int_value.ok_or_else(|| {
-                parser.error("Expected integer value for max_entries")
-            })?;
-            
+            let max = parse_const_expr(parser)?;
+
             if max < 0 {
                 return Err(parser.error("max_entries must be >= 0"));
             }
-            
+
             max_entries = Some(max as u32);
+
             expect_token(parser, TokenKind::Semicolon)?;
             continue;
         }
-        
+
         return Err(parser.error(format!(
             "Unexpected token inside map: {} (expected one of: type, key, value, max)",
             parser.current_kind()
         )));
     }
-    
+
     expect_token(parser, TokenKind::RBrace)?;
-    
-    if map_type.is_none() {
-        return Err(parser.error("Map missing required field: type"));
-    }
-    if key_type.is_none() {
-        return Err(parser.error("Map missing required field: key"));
-    }
-    if value_type.is_none() {
-        return Err(parser.error("Map missing required field: value"));
-    }
-    if max_entries.is_none() {
-        return Err(parser.error("Map missing required field: max"));
+
+    let map_type = map_type.unwrap();
+
+    match map_type {
+        MapType::Ringbuf => {
+            if max_entries.is_none() {
+                return Err(parser.error("Ringbuf map requires: max"));
+            }
+        }
+
+        MapType::Hash | MapType::Array | MapType::LruHash | MapType::ProgArray | MapType::PerfEventArray => {
+            if key_type.is_none() {
+                return Err(parser.error("Map missing required field: key"));
+            }
+            if value_type.is_none() {
+                return Err(parser.error("Map missing required field: value"));
+            }
+            if max_entries.is_none() {
+                return Err(parser.error("Map missing required field: max"));
+            }
+        }
     }
 
     Ok(MapDecl {
-        name: map_name_tok.lexeme,
-        map_type: map_type.unwrap(),
-        key_type: key_type.unwrap(),
-        value_type: value_type.unwrap(),
-        max_entries: max_entries.unwrap(),
-        loc: map_loc,
-    })
+    name: map_name_tok.lexeme,
+    map_type,
+    key_type,
+    value_type,
+    max_entries,
+    loc: map_loc,
+})
+
 }
 
 pub fn parse_type(parser: &mut Parser) -> Result<Type, ParseError> {
@@ -111,4 +121,34 @@ pub fn parse_type(parser: &mut Parser) -> Result<Type, ParseError> {
 pub fn expect_token(parser: &mut Parser, kind: TokenKind) -> Result<(), ParseError> {
     parser.expect(kind)?;
     Ok(())
+}
+
+fn parse_const_expr(parser: &mut Parser) -> Result<i64, ParseError> {
+    parse_shift(parser)
+}
+
+fn parse_shift(parser: &mut Parser) -> Result<i64, ParseError> {
+    let mut left = parse_primary(parser)?;
+
+    loop {
+        if parser.check(TokenKind::Shl) {
+            parser.advance()?;
+            let right = parse_primary(parser)?;
+            left = left << right;
+        } else if parser.check(TokenKind::Shr) {
+            parser.advance()?;
+            let right = parse_primary(parser)?;
+            left = left >> right;
+        } else {
+            break;
+        }
+    }
+
+    Ok(left)
+}
+
+fn parse_primary(parser: &mut Parser) -> Result<i64, ParseError> {
+    let n = parser.expect(TokenKind::Number)?;
+    n.int_value
+        .ok_or_else(|| parser.error("Expected integer literal"))
 }

@@ -1,12 +1,12 @@
 
-use crate::ast::{MapDecl, MapType, Type};
+use crate::ast::{MapDecl, MapType};
 use crate::parser::SourceLoc;
 use std::collections::HashSet;
     
 
-
 #[derive(Debug, thiserror::Error)]
 pub enum MapValidationError {
+
     #[error("Duplicate map name: {0}")]
     DuplicateMapName(String, SourceLoc),
 
@@ -16,7 +16,15 @@ pub enum MapValidationError {
     #[error("Invalid map type")]
     InvalidType(SourceLoc),
 
-    // NEW:
+    #[error("Map missing required field: key")]
+    MissingKey(SourceLoc),
+
+    #[error("Map missing required field: value")]
+    MissingValue(SourceLoc),
+
+    #[error("Map should not define key/value for this map type")]
+    UnexpectedKeyValue(SourceLoc),
+
     #[error("Unknown map method '{0}'")]
     UnknownMapMethod(String, SourceLoc),
 
@@ -27,27 +35,60 @@ pub enum MapValidationError {
     UnknownMapName(String, SourceLoc),
 }
 
-
-pub fn check_map(map_decl: &MapDecl, map_names: &mut HashSet<String>) -> Result<(), MapValidationError> {
+pub fn check_map(
+    map_decl: &MapDecl,
+    map_names: &mut HashSet<String>,
+) -> Result<(), MapValidationError> {
+    
     if !map_names.insert(map_decl.name.clone()) {
-        return Err(MapValidationError::DuplicateMapName(map_decl.name.clone(), map_decl.loc));
-    }
-
-    if map_decl.max_entries == 0 {
-        return Err(MapValidationError::InvalidMaxEntries(map_decl.loc));
-    }
-
-    match map_decl.key_type {
-        Type::U32 | Type::U64 | Type::I32 | Type::I64 => {}
-    }
-
-    match map_decl.value_type {
-        Type::U32 | Type::U64 | Type::I32 | Type::I64 => {}
+        return Err(MapValidationError::DuplicateMapName(
+            map_decl.name.clone(),
+            map_decl.loc,
+        ));
     }
     
     match map_decl.map_type {
-        MapType::Hash | MapType::Array | MapType::Ringbuf | 
-        MapType::LruHash | MapType::ProgArray | MapType::PerfEventArray => {}
+
+        MapType::Ringbuf => {
+            if map_decl.max_entries.unwrap_or(0) == 0 {
+                return Err(MapValidationError::InvalidMaxEntries(map_decl.loc));
+            }
+
+            if map_decl.key_type.is_some() || map_decl.value_type.is_some() {
+                return Err(MapValidationError::UnexpectedKeyValue(map_decl.loc));
+            }
+        }
+
+        MapType::PerfEventArray => {
+            if map_decl.max_entries.unwrap_or(0) == 0 {
+                return Err(MapValidationError::InvalidMaxEntries(map_decl.loc));
+            }
+            
+            if map_decl.key_type.is_some() || map_decl.value_type.is_some() {
+                return Err(MapValidationError::UnexpectedKeyValue(map_decl.loc));
+            }
+        }
+
+        MapType::Hash | MapType::LruHash => {
+            if map_decl.key_type.is_none() {
+                return Err(MapValidationError::MissingKey(map_decl.loc));
+            }
+            if map_decl.value_type.is_none() {
+                return Err(MapValidationError::MissingValue(map_decl.loc));
+            }
+            if map_decl.max_entries.unwrap_or(0) == 0 {
+                return Err(MapValidationError::InvalidMaxEntries(map_decl.loc));
+            }
+        }
+
+        MapType::Array | MapType::ProgArray => {
+            if map_decl.value_type.is_none() {
+                return Err(MapValidationError::MissingValue(map_decl.loc));
+            }
+            if map_decl.max_entries.unwrap_or(0) == 0 {
+                return Err(MapValidationError::InvalidMaxEntries(map_decl.loc));
+            }
+        }
     }
 
     Ok(())

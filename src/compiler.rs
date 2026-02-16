@@ -133,7 +133,10 @@ pub fn compile(input_path: &Path, _output_path: &Path) -> Result<(), miette::Rep
                 | crate::sema::map::MapValidationError::InvalidType(l)
                 | crate::sema::map::MapValidationError::UnknownMapMethod(_, l)
                 | crate::sema::map::MapValidationError::InvalidMapMethodArity(_, _, _, l)
-                | crate::sema::map::MapValidationError::UnknownMapName(_, l) => *l,
+                | crate::sema::map::MapValidationError::UnknownMapName(_, l)
+                | crate::sema::map::MapValidationError::UnexpectedKeyValue(l)
+                | crate::sema::map::MapValidationError::MissingKey(l)
+                | crate::sema::map::MapValidationError::MissingValue(l) => *l,
             },
             crate::sema::SemanticError::UnitError(ue) => match ue {
                 crate::sema::unit::UnitValidationError::EmptyUnitName(l)
@@ -149,36 +152,57 @@ pub fn compile(input_path: &Path, _output_path: &Path) -> Result<(), miette::Rep
         // Map semantic error to an ErrorCode and message
         let (code, msg) = match &sem_err {
             crate::sema::SemanticError::MapError(me) => match me {
-    crate::sema::map::MapValidationError::DuplicateMapName(name, _) => (
-        ErrorCode::DuplicateIdentifier,
-        format!("Duplicate map name: '{}'", name),
-    ),
+                crate::sema::map::MapValidationError::DuplicateMapName(name, _) => (
+                    ErrorCode::DuplicateIdentifier,
+                    format!("Duplicate map name: '{}'", name),
+                ),
 
-    crate::sema::map::MapValidationError::InvalidMaxEntries(_) => (
-        ErrorCode::InvalidMapDeclaration,
-        "Map 'max_entries' must be greater than zero".to_string(),
-    ),
+                crate::sema::map::MapValidationError::InvalidMaxEntries(_) => (
+                    ErrorCode::InvalidMapDeclaration,
+                    "Map 'max_entries' must be greater than zero".to_string(),
+                ),
 
-    crate::sema::map::MapValidationError::InvalidType(_) => (
-        ErrorCode::InvalidMapType,
-        "Invalid map type".to_string(),
-    ),
+                crate::sema::map::MapValidationError::InvalidType(_) => {
+                    (ErrorCode::InvalidMapType, "Invalid map type".to_string())
+                }
 
-    crate::sema::map::MapValidationError::UnknownMapName(name, _) => (
-        ErrorCode::InvalidMapDeclaration, // change if you have a better code
-        format!("Unknown map '{}'", name),
-    ),
+                crate::sema::map::MapValidationError::UnknownMapName(name, _) => (
+                    ErrorCode::InvalidMapDeclaration, // change if you have a better code
+                    format!("Unknown map '{}'", name),
+                ),
 
-    crate::sema::map::MapValidationError::UnknownMapMethod(method, _) => (
-        ErrorCode::InvalidMapDeclaration, // change if you have a better code
-        format!("Unknown map method '{}'", method),
-    ),
+                crate::sema::map::MapValidationError::UnknownMapMethod(method, _) => (
+                    ErrorCode::InvalidMapDeclaration, // change if you have a better code
+                    format!("Unknown map method '{}'", method),
+                ),
 
-    crate::sema::map::MapValidationError::InvalidMapMethodArity(method, expected, got, _) => (
-        ErrorCode::InvalidMapDeclaration, // change if you have a better code
-        format!("Map method '{}' expects {} args, got {}", method, expected, got),
-    ),
-},
+                crate::sema::map::MapValidationError::InvalidMapMethodArity(
+                    method,
+                    expected,
+                    got,
+                    _,
+                ) => (
+                    ErrorCode::InvalidMapDeclaration, // change if you have a better code
+                    format!(
+                        "Map method '{}' expects {} args, got {}",
+                        method, expected, got
+                    ),
+                ),
+                crate::sema::map::MapValidationError::MissingKey(_) => (
+                    ErrorCode::InvalidMapDeclaration,
+                    "Map missing required field: key".to_string(),
+                ),
+
+                crate::sema::map::MapValidationError::MissingValue(_) => (
+                    ErrorCode::InvalidMapDeclaration,
+                    "Map missing required field: value".to_string(),
+                ),
+
+                crate::sema::map::MapValidationError::UnexpectedKeyValue(_) => (
+                    ErrorCode::InvalidMapDeclaration,
+                    "This map type must not define key/value".to_string(),
+                ),
+            },
             crate::sema::SemanticError::UnitError(ue) => match ue {
                 crate::sema::unit::UnitValidationError::EmptyUnitName(_) => (
                     ErrorCode::InvalidProgramType,
