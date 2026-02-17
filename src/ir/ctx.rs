@@ -24,6 +24,12 @@ pub enum CtxMethod {
     // Time helpers
     // ================================
     GetKtimeNs,        // bpf_ktime_get_ns
+
+    // ================================
+    // Memory probe helpers
+    // ================================
+    ProbeReadUserStr,  // bpf_probe_read_user_str (helper 202)
+    ProbeReadKernelStr, // bpf_probe_read_kernel_str (helper 204)
 }
 
 
@@ -48,6 +54,10 @@ impl CtxMethod {
 
             // Time helpers
             "get_ktime_ns" => Some(Self::GetKtimeNs),
+
+            // Memory probe helpers
+            "probe_read_user_str" => Some(Self::ProbeReadUserStr),
+            "probe_read_kernel_str" => Some(Self::ProbeReadKernelStr),
 
             _ => None,
         }

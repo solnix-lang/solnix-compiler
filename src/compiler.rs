@@ -48,26 +48,27 @@ impl ErrorHandler {
             .build(span, &self.source_manager)
     }
 
-    // Create a lexical error diagnostic
-    // pub fn lexical_error(
-    //     &self,
-    //     code: ErrorCode,
-    //     message: impl Into<String>,
-    //     span: &Span,
-    // ) -> Result<CompileDiagnostic, String> {
-    //     DiagnosticBuilder::new(ErrorCategory::Lexical, code, message)
-    //         .build(span, &self.source_manager)
-    // }
+    /// Create a lexical error diagnostic
+    pub fn lexical_error(
+        &self,
+        code: ErrorCode,
+        message: impl Into<String>,
+        span: &Span,
+    ) -> Result<CompileDiagnostic, String> {
+        DiagnosticBuilder::new(ErrorCategory::Lexical, code, message)
+            .build(span, &self.source_manager)
+    }
 
-    // Create a codegen error diagnostic
-    // pub fn codegen_error(
-    //     &self,
-    //     message: impl Into<String>,
-    //     span: &Span,
-    // ) -> Result<CompileDiagnostic, String> {
-    //     DiagnosticBuilder::new(ErrorCategory::Codegen, ErrorCode::CodegenError, message)
-    //         .build(span, &self.source_manager)
-    // }
+    /// Create a codegen error diagnostic
+    pub fn codegen_error(
+        &self,
+        message: impl Into<String>,
+        span: &Span,
+    ) -> Result<CompileDiagnostic, String> {
+        DiagnosticBuilder::new(ErrorCategory::Codegen, ErrorCode::CodegenError, message)
+            .build(span, &self.source_manager)
+    }
+    
 }
 
 pub fn compile(input_path: &Path, _output_path: &Path) -> Result<(), miette::Report> {
@@ -105,7 +106,24 @@ pub fn compile(input_path: &Path, _output_path: &Path) -> Result<(), miette::Rep
         Ok(prog) => prog,
         Err(e) => {
             let span = Span::new(_file_id, e.0.offset..e.0.offset + 1);
-            match error_handler.parse_error(e.1.clone(), &span) {
+
+            let error_result = if e.1.contains("Invalid character") 
+                || e.1.contains("Unterminated") 
+                || e.1.contains("Invalid escape sequence")
+                || e.1.contains("Unexpected character") {
+                let code = match e.1.as_str() {
+                    msg if msg.contains("Invalid character") => ErrorCode::InvalidCharacter,
+                    msg if msg.contains("Unterminated comment") => ErrorCode::UnterminatedComment,
+                    msg if msg.contains("Unterminated string") => ErrorCode::UnterminatedString,
+                    msg if msg.contains("Invalid escape sequence") => ErrorCode::InvalidEscapeSequence,
+                    _ => ErrorCode::InvalidCharacter,
+                };
+                error_handler.lexical_error(code, e.1.clone(), &span)
+            } else {
+                error_handler.parse_error(e.1.clone(), &span)
+            };
+            
+            match error_result {
                 Ok(diag) => {
                     let report = error_handler.report_error(diag);
                     eprintln!("{}", report);
@@ -119,8 +137,7 @@ pub fn compile(input_path: &Path, _output_path: &Path) -> Result<(), miette::Rep
             }
         }
     };
-
-    // Run semantic analysis and emit a CompileDiagnostic with source span on error
+    
     if let Err(sem_err) = crate::sema::check_program(&program) {
         use crate::diagnostics::ErrorCode;
         use crate::parser::SourceLoc;
@@ -258,9 +275,24 @@ pub fn compile(input_path: &Path, _output_path: &Path) -> Result<(), miette::Rep
         .map_err(|e| miette::miette!("{:?}", e))
         .wrap_err("Lowering failed")?;
 
-    crate::emit::ebpf_c::program::emit_program(&program_ir, &output)
-        .map_err(|e| miette::miette!("{}", e))
-        .wrap_err("Emit failed")?;
+    // Emit eBPF code with stage-aware error handling
+    if let Err(e) = crate::emit::ebpf_c::program::emit_program(&program_ir, &output) {
+        let span = Span::new(_file_id, 0..1);
+        let error_msg = format!("Code generation failed: {}", e);
+        
+        match error_handler.codegen_error(error_msg.clone(), &span) {
+            Ok(diag) => {
+                let report = error_handler.report_error(diag);
+                eprintln!("{}", report);
+                return Err(report);
+            }
+            Err(_) => {
+                let report = miette::miette!("{}", error_msg);
+                eprintln!("{}", report);
+                return Err(report);
+            }
+        }
+    }
 
     Ok(())
 }

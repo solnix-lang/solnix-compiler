@@ -12,7 +12,6 @@ pub struct UnitIr {
     pub blocks: Vec<BasicBlock>,
     pub next_var_id: u32,
     pub program_type: ProgramKind,
-
     next_block_id: u32,
 }
 
@@ -43,7 +42,11 @@ struct LowerCtx {
 }
 
 impl UnitIr {
-    pub fn lower(unit: &Unit) -> Result<Self, LoweringError> {
+    pub fn lower(
+        unit: &Unit,
+        events: &std::collections::HashMap<String, u32>,
+        event_decls: &std::collections::HashMap<String, crate::ast::EventDecl>,
+    ) -> Result<Self, LoweringError> {
         let program_kind = unit.kind;
 
         let mut ir = Self {
@@ -69,7 +72,7 @@ impl UnitIr {
         };
 
         for stmt in &unit.body {
-            lower_statement(stmt, &mut ctx, &mut ir, &mut current_block)?;
+            lower_statement(stmt, &mut ctx, &mut ir, &mut current_block, events, event_decls)?;
         }
 
         ir.blocks.push(current_block);
@@ -105,7 +108,7 @@ fn lower_ctx_helper(
         CtxMethod::GetCurrentTask => (35, crate::ast::Type::U64),
         CtxMethod::GetKtimeNs => (5, crate::ast::Type::U64),
 
-        // Not helpers
+        // Not helpers - these are handled separately
         CtxMethod::LoadU8
         | CtxMethod::LoadU16
         | CtxMethod::LoadU32
@@ -113,9 +116,11 @@ fn lower_ctx_helper(
         | CtxMethod::LoadI8
         | CtxMethod::LoadI16
         | CtxMethod::LoadI32
-        | CtxMethod::LoadI64 => {
+        | CtxMethod::LoadI64
+        | CtxMethod::ProbeReadUserStr
+        | CtxMethod::ProbeReadKernelStr => {
             return Err(LoweringError::UnitLowering(format!(
-                "Internal error: load_* is not a helper call: {:?}",
+                "Internal error: {:?} is not a simple helper call",
                 method
             )));
         }
@@ -141,12 +146,14 @@ fn lower_statement(
     ctx: &mut LowerCtx,
     ir: &mut UnitIr,
     block: &mut BasicBlock,
+    events: &std::collections::HashMap<String, u32>,
+    event_decls: &std::collections::HashMap<String, crate::ast::EventDecl>,
 ) -> Result<(), LoweringError> {
     match &stmt.kind {
         StmtKind::VarDecl(var_decl) => {
             let ty: crate::ast::Type = vartype_to_type(&var_decl.var_type)?;
             let var_id = ir.alloc_var(ty.clone());
-            let value = lower_expr(&var_decl.value, ctx, ir, block)?;
+            let value = lower_expr(&var_decl.value, ctx, ir, block, events, event_decls)?;
 
             ctx.vars.insert(var_decl.name.clone(), var_id);
 
@@ -160,49 +167,113 @@ fn lower_statement(
         }
 
         StmtKind::Return(expr) => {
-            let ret_value = lower_expr(expr, ctx, ir, block)?;
+            let ret_value = lower_expr(expr, ctx, ir, block, events, event_decls)?;
             block.terminator = Terminator::Return(ret_value);
         }
 
         StmtKind::HeapVarDecl(heap_decl) => {
-            let (map_name, key_expr) = match &heap_decl.init.kind {
-                ExprKind::MethodCall(call) if call.method == "lookup" => {
-                    if call.arg.len() != 1 {
-                        return Err(LoweringError::UnitLowering(format!(
-                            "map.lookup expects 1 argument, got {}",
-                            call.arg.len()
-                        )));
+            match &heap_decl.init.kind {
+                ExprKind::MethodCall(call) => {
+                    let receiver_name = if let ExprKind::Variable(name) = &call.receiver.kind {
+                        name.clone()
+                    } else {
+                        return Err(LoweringError::UnitLowering(
+                            "heap initializer receiver must be identifier".to_string(),
+                        ));
+                    };
+
+                    match call.method.as_str() {
+                        // ----------------------------
+                        // map.lookup(key)
+                        // ----------------------------
+                        "lookup" => {
+                            if call.arg.len() != 1 {
+                                return Err(LoweringError::UnitLowering(format!(
+                                    "{}.lookup expects 1 argument",
+                                    receiver_name
+                                )));
+                            }
+
+                            let key = lower_expr(&call.arg[0], ctx, ir, block, events, event_decls)?;
+                            let result = ir.alloc_var(crate::ast::Type::U64);
+
+                            block.instructions.push(Instruction {
+                                result,
+                                opcode: Opcode::CallMap {
+                                    map_name: receiver_name.clone(),
+                                },
+                                operands: vec![key],
+                                result_type: crate::ast::Type::U64,
+                            });
+
+                            ctx.vars.insert(heap_decl.name.clone(), result);
+                            ctx.map_ptr_vars.insert(result);
+                        }
+
+                        // ----------------------------
+                        // map.reserve(event_type)
+                        // ----------------------------
+                        "reserve" => {
+                            if call.arg.len() != 1 {
+                                return Err(LoweringError::UnitLowering(format!(
+                                    "{}.reserve expects event type name",
+                                    receiver_name
+                                )));
+                            }
+
+                            let event_name = if let ExprKind::Variable(name) = &call.arg[0].kind {
+                                name.clone()
+                            } else {
+                                return Err(LoweringError::UnitLowering(
+                                    "reserve requires event type name".to_string(),
+                                ));
+                            };
+
+                            let size = *events.get(&event_name).ok_or_else(|| {
+                                LoweringError::UnitLowering(format!(
+                                    "Unknown event type: {}",
+                                    event_name
+                                ))
+                            })?;
+
+                            let result = ir.alloc_var(crate::ast::Type::U64);
+
+                            block.instructions.push(Instruction {
+                                result,
+                                opcode: Opcode::RingBufReserve {
+                                    map_name: receiver_name.clone(),
+                                    size,
+                                },
+                                operands: vec![],
+                                result_type: crate::ast::Type::U64,
+                            });
+
+                            ctx.vars.insert(heap_decl.name.clone(), result);
+                            ctx.map_ptr_vars.insert(result);
+                        }
+
+                        _ => {
+                            return Err(LoweringError::UnitLowering(format!(
+                                "heap var must be initialized with map.lookup or map.reserve"
+                            )));
+                        }
                     }
-                    (call.receiver.clone(), &call.arg[0])
                 }
-                ExprKind::HeapLookup(hl) => (hl.map_name.clone(), hl.key_expr.as_ref()),
+
                 _ => {
                     return Err(LoweringError::UnitLowering(
-                        "heap var must be initialized with map.lookup(key)".to_string(),
+                        "heap var must be initialized with map.lookup or map.reserve".to_string(),
                     ));
                 }
-            };
-
-            let key = lower_expr(key_expr, ctx, ir, block)?;
-            let result = ir.alloc_var(crate::ast::Type::U64);
-
-            block.instructions.push(Instruction {
-                result,
-                opcode: Opcode::CallMap { map_name },
-                operands: vec![key],
-                result_type: crate::ast::Type::U64,
-            });
-
-            ctx.vars.insert(heap_decl.name.clone(), result);
-            ctx.map_ptr_vars.insert(result); // mark as pointer from map
+            }
         }
 
         StmtKind::Assignment(assign) => {
-            let value = lower_expr(&assign.value, ctx, ir, block)?;
+            let value = lower_expr(&assign.value, ctx, ir, block, events, event_decls)?;
 
             match &assign.target.kind {
                 ExprKind::Dereference(ptr_expr) => {
-                    let ptr = lower_expr(ptr_expr, ctx, ir, block)?;
+                    let ptr = lower_expr(ptr_expr, ctx, ir, block, events, event_decls)?;
 
                     let needs_null_check =
                         matches!(ptr, Operand::Var(v) if ctx.map_ptr_vars.contains(&v));
@@ -309,6 +380,52 @@ fn lower_statement(
                     ctx.vars.insert(var_name.clone(), new_id);
                 }
 
+                ExprKind::FieldAccess { base, field } => {
+                    // Handle field assignment like evt.pid = value
+                    // First, get the base pointer/variable
+                    let base_operand = lower_expr(base, ctx, ir, block, events, event_decls)?;
+                    
+                    // Get the variable ID (should be a pointer from reserve)
+                    let base_var = if let Operand::Var(v) = base_operand {
+                        v
+                    } else {
+                        return Err(LoweringError::UnitLowering(
+                            "Field access requires a pointer variable".to_string(),
+                        ));
+                    };
+
+                    // Look up field offset across all events
+                    let mut field_offset: Option<u32> = None;
+                    for (_, event_decl) in event_decls {
+                        if let Some(offset) = crate::sema::event::compute_field_offset(event_decl, field) {
+                            field_offset = Some(offset);
+                            break;
+                        }
+                    }
+                    
+                    let _offset = field_offset.ok_or_else(|| {
+                        LoweringError::UnitLowering(format!("Unknown field: {}", field))
+                    })?;
+
+                    // For now, we only support simple field assignments (no compound ops on fields)
+                    if !matches!(assign.op, crate::ast::AssignmentOp::Assign) {
+                        return Err(LoweringError::UnitLowering(
+                            "Compound assignment operators not supported on struct fields".to_string(),
+                        ));
+                    }
+
+                    // Create a store instruction for the field
+                    // TODO: Currently we store at the base pointer with fixed size
+                    // In the future, we should track field offsets and sizes per event type
+                    let result = ir.alloc_var(crate::ast::Type::U64);
+                    block.instructions.push(Instruction {
+                        result,
+                        opcode: Opcode::Store { size: 8 },
+                        operands: vec![Operand::Var(base_var), value.clone()],
+                        result_type: crate::ast::Type::U64,
+                    });
+                }
+
                 _ => {
                     return Err(LoweringError::UnitLowering(
                         "Invalid assignment target".to_string(),
@@ -363,7 +480,7 @@ fn lower_statement(
                 terminator: Terminator::Jump(merge_id),
             };
             for s in &if_guard.then_body {
-                lower_statement(s, ctx, ir, &mut tb)?;
+                lower_statement(s, ctx, ir, &mut tb, events, event_decls)?;
             }
             if !matches!(
                 tb.terminator,
@@ -378,7 +495,7 @@ fn lower_statement(
             };
             if let Some(else_body) = &if_guard.else_body {
                 for s in else_body {
-                    lower_statement(s, ctx, ir, &mut eb)?;
+                    lower_statement(s, ctx, ir, &mut eb, events, event_decls)?;
                 }
             }
             if !matches!(
@@ -393,7 +510,7 @@ fn lower_statement(
         }
 
         StmtKind::ExprStmt(expr) => {
-            let _ = lower_expr(expr, ctx, ir, block)?;
+            let _ = lower_expr(expr, ctx, ir, block, events, event_decls)?;
         }
     }
     Ok(())
@@ -404,6 +521,8 @@ fn lower_expr(
     ctx: &mut LowerCtx,
     ir: &mut UnitIr,
     block: &mut BasicBlock,
+    events: &std::collections::HashMap<String, u32>,
+    event_decls: &std::collections::HashMap<String, crate::ast::EventDecl>,
 ) -> Result<Operand, LoweringError> {
     match &expr.kind {
         ExprKind::Variable(name) => {
@@ -416,7 +535,7 @@ fn lower_expr(
         ExprKind::Number(n) => Ok(Operand::Immediate(*n)),
 
         ExprKind::HeapLookup(hl) => {
-            let key = lower_expr(&hl.key_expr, ctx, ir, block)?;
+            let key = lower_expr(&hl.key_expr, ctx, ir, block, events, event_decls)?;
             let result = ir.alloc_var(crate::ast::Type::U64);
 
             block.instructions.push(Instruction {
@@ -433,7 +552,15 @@ fn lower_expr(
         }
 
         ExprKind::MethodCall(call) => {
-            if call.receiver == "ctx" {
+            let receiver_name = if let ExprKind::Variable(name) = &call.receiver.kind {
+                name.clone()
+            } else {
+                return Err(LoweringError::UnitLowering(
+                    "Method receiver must be identifier".to_string(),
+                ));
+            };
+
+            if receiver_name == "ctx" {
                 let method = CtxMethod::from_str(&call.method).ok_or_else(|| {
                     LoweringError::UnitLowering(format!("Unknown ctx method: {}", call.method))
                 })?;
@@ -462,7 +589,7 @@ fn lower_expr(
                             )));
                         }
 
-                        let offset_expr = lower_expr(&call.arg[0], ctx, ir, block)?;
+                        let offset_expr = lower_expr(&call.arg[0], ctx, ir, block, events, event_decls)?;
                         let offset = match offset_expr {
                             Operand::Immediate(n) => n as i32,
                             _ => {
@@ -502,6 +629,72 @@ fn lower_expr(
                         Ok(Operand::Var(result))
                     }
 
+                    // ctx.probe_read_user_str(dest, size, src)
+                    CtxMethod::ProbeReadUserStr => {
+                        if call.arg.len() != 3 {
+                            return Err(LoweringError::UnitLowering(format!(
+                                "ctx.probe_read_user_str expects 3 arguments, got {}",
+                                call.arg.len()
+                            )));
+                        }
+
+                        let dest = lower_expr(&call.arg[0], ctx, ir, block, events, event_decls)?;
+                        let size_expr = lower_expr(&call.arg[1], ctx, ir, block, events, event_decls)?;
+                        let src = lower_expr(&call.arg[2], ctx, ir, block, events, event_decls)?;
+
+                        let size = match size_expr {
+                            Operand::Immediate(n) => n as u32,
+                            _ => {
+                                return Err(LoweringError::UnitLowering(
+                                    "probe_read_user_str size must be immediate".to_string(),
+                                ))
+                            }
+                        };
+
+                        let result = ir.alloc_var(crate::ast::Type::U64);
+                        block.instructions.push(Instruction {
+                            result,
+                            opcode: Opcode::HelperCall { id: 202 },
+                            operands: vec![dest, Operand::Immediate(size as i64), src],
+                            result_type: crate::ast::Type::U64,
+                        });
+
+                        Ok(Operand::Var(result))
+                    }
+
+                    // ctx.probe_read_kernel_str(dest, size, src)
+                    CtxMethod::ProbeReadKernelStr => {
+                        if call.arg.len() != 3 {
+                            return Err(LoweringError::UnitLowering(format!(
+                                "ctx.probe_read_kernel_str expects 3 arguments, got {}",
+                                call.arg.len()
+                            )));
+                        }
+
+                        let dest = lower_expr(&call.arg[0], ctx, ir, block, events, event_decls)?;
+                        let size_expr = lower_expr(&call.arg[1], ctx, ir, block, events, event_decls)?;
+                        let src = lower_expr(&call.arg[2], ctx, ir, block, events, event_decls)?;
+
+                        let size = match size_expr {
+                            Operand::Immediate(n) => n as u32,
+                            _ => {
+                                return Err(LoweringError::UnitLowering(
+                                    "probe_read_kernel_str size must be immediate".to_string(),
+                                ))
+                            }
+                        };
+
+                        let result = ir.alloc_var(crate::ast::Type::U64);
+                        block.instructions.push(Instruction {
+                            result,
+                            opcode: Opcode::HelperCall { id: 204 },
+                            operands: vec![dest, Operand::Immediate(size as i64), src],
+                            result_type: crate::ast::Type::U64,
+                        });
+
+                        Ok(Operand::Var(result))
+                    }
+
                     // ctx helper methods (0 args)
                     _ => {
                         if !call.arg.is_empty() {
@@ -524,24 +717,23 @@ fn lower_expr(
                     if call.arg.len() != 1 {
                         return Err(LoweringError::UnitLowering(format!(
                             "{}.lookup expects 1 argument, got {}",
-                            call.receiver,
+                            receiver_name,
                             call.arg.len()
                         )));
                     }
 
-                    let key = lower_expr(&call.arg[0], ctx, ir, block)?;
+                    let key = lower_expr(&call.arg[0], ctx, ir, block, events, event_decls)?;
                     let result = ir.alloc_var(crate::ast::Type::U64);
 
                     block.instructions.push(Instruction {
                         result,
                         opcode: Opcode::CallMap {
-                            map_name: call.receiver.clone(),
+                            map_name: receiver_name.clone(),
                         },
                         operands: vec![key],
                         result_type: crate::ast::Type::U64,
                     });
 
-                    // mark as map pointer for deref null-check
                     ctx.map_ptr_vars.insert(result);
 
                     Ok(Operand::Var(result))
@@ -551,19 +743,20 @@ fn lower_expr(
                     if call.arg.len() != 2 {
                         return Err(LoweringError::UnitLowering(format!(
                             "{}.update expects 2 arguments, got {}",
-                            call.receiver,
+                            receiver_name,
                             call.arg.len()
                         )));
                     }
 
-                    let key = lower_expr(&call.arg[0], ctx, ir, block)?;
-                    let value = lower_expr(&call.arg[1], ctx, ir, block)?;
+                    let key = lower_expr(&call.arg[0], ctx, ir, block, events, event_decls)?;
+                    let value = lower_expr(&call.arg[1], ctx, ir, block, events, event_decls)?;
 
                     let result = ir.alloc_var(crate::ast::Type::U64);
+
                     block.instructions.push(Instruction {
                         result,
                         opcode: Opcode::UpdateMap {
-                            map_name: call.receiver.clone(),
+                            map_name: receiver_name.clone(),
                         },
                         operands: vec![key, value],
                         result_type: crate::ast::Type::U64,
@@ -572,15 +765,75 @@ fn lower_expr(
                     Ok(Operand::Var(result))
                 }
 
+                "reserve" => {
+                    if call.arg.len() != 1 {
+                        return Err(LoweringError::UnitLowering(format!(
+                            "{}.reserve expects 1 argument (event type)",
+                            receiver_name
+                        )));
+                    }
+
+                    let event_name = if let ExprKind::Variable(name) = &call.arg[0].kind {
+                        name.clone()
+                    } else {
+                        return Err(LoweringError::UnitLowering(
+                            "reserve requires event type name".to_string(),
+                        ));
+                    };
+
+                    let size = *events.get(&event_name).ok_or_else(|| {
+                        LoweringError::UnitLowering(format!("Unknown event type: {}", event_name))
+                    })?;
+
+                    let result = ir.alloc_var(crate::ast::Type::U64);
+
+                    block.instructions.push(Instruction {
+                        result,
+                        opcode: Opcode::RingBufReserve {
+                            map_name: receiver_name.clone(),
+                            size: size,
+                        },
+                        operands: vec![],
+                        result_type: crate::ast::Type::U64,
+                    });
+
+                    ctx.map_ptr_vars.insert(result); // mark as nullable pointer
+
+                    Ok(Operand::Var(result))
+                }
+
+                "submit" => {
+                    if call.arg.len() != 1 {
+                        return Err(LoweringError::UnitLowering(format!(
+                            "{}.submit expects 1 argument",
+                            receiver_name
+                        )));
+                    }
+
+                    let ptr = lower_expr(&call.arg[0], ctx, ir, block, events, event_decls)?;
+
+                    let result = ir.alloc_var(crate::ast::Type::U64);
+
+                    block.instructions.push(Instruction {
+                        result,
+                        opcode: Opcode::RingBufSubmit {
+                            map_name: receiver_name.clone(),
+                        },
+                        operands: vec![ptr],
+                        result_type: crate::ast::Type::U64,
+                    });
+
+                    Ok(Operand::Var(result))
+                }
                 _ => Err(LoweringError::UnitLowering(format!(
                     "Unknown method: {}.{}",
-                    call.receiver, call.method
+                    receiver_name, call.method
                 ))),
             }
         }
 
         ExprKind::Dereference(ptr_expr) => {
-            let ptr = lower_expr(ptr_expr, ctx, ir, block)?;
+            let ptr = lower_expr(ptr_expr, ctx, ir, block, events, event_decls)?;
             let result = ir.alloc_var(crate::ast::Type::U64);
 
             block.instructions.push(Instruction {
@@ -594,8 +847,8 @@ fn lower_expr(
         }
 
         ExprKind::Binary(bin) => {
-            let left = lower_expr(&bin.left, ctx, ir, block)?;
-            let right = lower_expr(&bin.right, ctx, ir, block)?;
+            let left = lower_expr(&bin.left, ctx, ir, block, events, event_decls)?;
+            let right = lower_expr(&bin.right, ctx, ir, block, events, event_decls)?;
 
             let result = ir.alloc_var(crate::ast::Type::U64);
 
@@ -650,6 +903,46 @@ fn lower_expr(
                     call.name
                 ))),
             }
+        }
+
+        ExprKind::FieldAccess { base, field } => {
+            // Handle field access like evt.filename
+            let base_operand = lower_expr(base, ctx, ir, block, events, event_decls)?;
+            
+            // Get the variable ID (should be a pointer from reserve)
+            let base_var = if let Operand::Var(v) = base_operand {
+                v
+            } else {
+                return Err(LoweringError::UnitLowering(
+                    "Field access requires a pointer variable".to_string(),
+                ));
+            };
+
+            // Look up field offset across all events
+            let mut field_offset: Option<u32> = None;
+            for (_, event_decl) in event_decls {
+                if let Some(offset) = crate::sema::event::compute_field_offset(event_decl, field) {
+                    field_offset = Some(offset);
+                    break;
+                }
+            }
+            
+            let _offset = field_offset.ok_or_else(|| {
+                LoweringError::UnitLowering(format!("Unknown field: {}", field))
+            })?;
+
+            // Create a load instruction from the field
+            // TODO: Currently we load from base pointer with fixed size
+            // In the future, we should track field offsets and sizes per event type
+            let result = ir.alloc_var(crate::ast::Type::U64);
+            block.instructions.push(Instruction {
+                result,
+                opcode: Opcode::LoadKey,
+                operands: vec![Operand::Var(base_var)],
+                result_type: crate::ast::Type::U64,
+            });
+
+            Ok(Operand::Var(result))
         }
 
         other => Err(LoweringError::UnitLowering(format!(
