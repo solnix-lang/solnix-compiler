@@ -1,4 +1,4 @@
-use crate::ast::{EventDecl, EventField, EventType, PrimitiveType};
+use crate::ast::{EventDecl, EventType, PrimitiveType};
 use crate::parser::SourceLoc;
 use std::collections::HashSet;
 
@@ -137,4 +137,50 @@ fn primitive_layout(p: &PrimitiveType) -> (u32, u32) {
 #[inline]
 fn align_up(offset: u32, align: u32) -> u32 {
     (offset + align - 1) & !(align - 1)
+}
+
+
+pub fn compute_event_size(event: &EventDecl) -> u32 {
+    let mut offset: u32 = 0;
+    let mut max_align: u32 = 1;
+
+    for field in &event.fields {
+        let (size, align) = validate_event_type(&field.ty, field.loc)
+            .expect("Event should already be validated");
+
+        max_align = max_align.max(align);
+
+        offset = align_up(offset, align);
+        offset += size;
+    }
+
+    align_up(offset, max_align)
+}
+
+pub fn compute_field_offset(event: &EventDecl, field_name: &str) -> Option<u32> {
+    let mut offset: u32 = 0;
+    let mut max_align: u32 = 1;
+
+    // First pass: calculate alignments
+    for field in &event.fields {
+        let (_, align) = validate_event_type(&field.ty, field.loc)
+            .expect("Event should already be validated");
+        max_align = max_align.max(align);
+    }
+
+    // Second pass: calculate field offset
+    for field in &event.fields {
+        let (size, align) = validate_event_type(&field.ty, field.loc)
+            .expect("Event should already be validated");
+
+        offset = align_up(offset, align);
+
+        if field.name == field_name {
+            return Some(offset);
+        }
+
+        offset += size;
+    }
+
+    None
 }

@@ -1,3 +1,4 @@
+use crate::ast::EventDecl;
 use crate::ir::ctx::CtxMethod;
 use crate::parser::SourceLoc;
 
@@ -9,6 +10,7 @@ pub struct Unit {
     pub sections: Vec<String>,
     pub kind: ProgramKind,
     pub license: Option<String>,
+    pub events: Vec<EventDecl>,
     pub body: Vec<Stmt>,
 }
 
@@ -122,8 +124,10 @@ pub enum ExprKind {
     SizeOf {
         name: String,
     },
-    
-
+    FieldAccess {
+        base: Box<Expr>,
+        field: String,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -148,7 +152,7 @@ pub struct HeapLookup {
 
 #[derive(Debug, Clone)]
 pub struct MethodCall {
-    pub receiver: String,
+    pub receiver: Box<Expr>,
     pub method: String,
     pub arg: Vec<Expr>,
 }
@@ -202,7 +206,13 @@ impl ProgramKind {
 
             ProgramKind::Socket => &[LoadU8, LoadU16, LoadU32],
 
-            ProgramKind::Kprobe => &[LoadU64, GetPidTgid, GetUidGid],
+            ProgramKind::Kprobe => &[
+                LoadU64,
+                GetPidTgid,
+                GetUidGid,
+                ProbeReadUserStr,
+                ProbeReadKernelStr,
+            ],
 
             ProgramKind::Tracepoint => &[
                 LoadU8,
@@ -218,9 +228,11 @@ impl ProgramKind {
                 GetCurrentComm,
                 GetCurrentTask,
                 GetKtimeNs,
+                ProbeReadUserStr,
+                ProbeReadKernelStr,
             ],
 
-            ProgramKind::RawTracepoint => &[LoadU64],
+            ProgramKind::RawTracepoint => &[LoadU64, ProbeReadUserStr, ProbeReadKernelStr],
 
             ProgramKind::Fentry | ProgramKind::Fexit => &[LoadU64],
 

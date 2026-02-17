@@ -30,8 +30,11 @@ pub enum Opcode {
     Binary { op: BinaryOp },
 
     // maps
-    CallMap { map_name: String },      // lookup -> returns pointer (u64)
-    UpdateMap { map_name: String },    // update(key, value) -> returns status (u64)
+    CallMap { map_name: String },   // lookup -> returns pointer (u64)
+    UpdateMap { map_name: String }, // update(key, value) -> returns status (u64)
+
+    RingBufReserve { map_name: String, size: u32 },
+    RingBufSubmit { map_name: String },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

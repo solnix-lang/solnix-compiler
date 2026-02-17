@@ -10,7 +10,7 @@ pub fn emit_tracepoint(out: &mut String, unit: &UnitIr, sec: &str) -> Result<(),
     writeln!(out, "int {}(void *ctx) {{", unit.name).map_err(err)?;
     writeln!(out, "    (void)ctx;").map_err(err)?;
     writeln!(out).map_err(err)?;
-    
+
     let mut used_vars: HashSet<u32> = HashSet::new();
 
     for block in &unit.blocks {
@@ -37,7 +37,6 @@ pub fn emit_tracepoint(out: &mut String, unit: &UnitIr, sec: &str) -> Result<(),
         }
     }
 
-    
     let mut branch_cond_vars: HashSet<u32> = HashSet::new();
     for block in &unit.blocks {
         if let crate::ir::unit::Terminator::Branch { condition, .. } = &block.terminator {
@@ -46,14 +45,14 @@ pub fn emit_tracepoint(out: &mut String, unit: &UnitIr, sec: &str) -> Result<(),
             }
         }
     }
-    
+
     let mut var_types: HashMap<u32, crate::ast::Type> = HashMap::new();
     for block in &unit.blocks {
         for inst in &block.instructions {
             var_types.entry(inst.result.0).or_insert(inst.result_type);
         }
     }
-    
+
     let mut pointer_vars: HashSet<u32> = HashSet::new();
     for block in &unit.blocks {
         for inst in &block.instructions {
@@ -62,10 +61,10 @@ pub fn emit_tracepoint(out: &mut String, unit: &UnitIr, sec: &str) -> Result<(),
             }
         }
     }
-    
+
     let mut vars_sorted: Vec<u32> = used_vars.iter().copied().collect();
     vars_sorted.sort_unstable();
-    
+
     let mut temp_counter: u32 = 0;
     let mut temps: Vec<(String, String)> = Vec::new();
 
@@ -79,7 +78,7 @@ pub fn emit_tracepoint(out: &mut String, unit: &UnitIr, sec: &str) -> Result<(),
         temps.push((name.clone(), init.to_string()));
         name
     }
-    
+
     let mut imm_addr_cache: HashMap<(u32, String), String> = HashMap::new();
 
     let mut inst_index: u32 = 0;
@@ -118,7 +117,7 @@ pub fn emit_tracepoint(out: &mut String, unit: &UnitIr, sec: &str) -> Result<(),
             inst_index += 1;
         }
     }
-    
+
     for &id in vars_sorted.iter() {
         let ty = var_types.get(&id).copied().unwrap_or(crate::ast::Type::U64);
         let c_type = match ty {
@@ -142,7 +141,7 @@ pub fn emit_tracepoint(out: &mut String, unit: &UnitIr, sec: &str) -> Result<(),
     if !vars_sorted.is_empty() || !temps.is_empty() {
         writeln!(out).map_err(err)?;
     }
-    
+
     writeln!(out, "    goto __block_{};", unit.blocks[0].id.0).map_err(err)?;
     writeln!(out).map_err(err)?;
 
@@ -150,7 +149,7 @@ pub fn emit_tracepoint(out: &mut String, unit: &UnitIr, sec: &str) -> Result<(),
     for b in &unit.blocks {
         block_ids.insert(b.id.0);
     }
-    
+
     inst_index = 0;
     for block in &unit.blocks {
         writeln!(out, "__block_{}:", block.id.0).map_err(err)?;
@@ -167,7 +166,7 @@ pub fn emit_tracepoint(out: &mut String, unit: &UnitIr, sec: &str) -> Result<(),
                 inst.opcode,
                 Opcode::Store { .. } | Opcode::UpdateMap { .. } | Opcode::NullCheck
             );
-            
+
             if !is_side_effect && !res_used {
                 inst_index += 1;
                 continue;
@@ -197,15 +196,15 @@ pub fn emit_tracepoint(out: &mut String, unit: &UnitIr, sec: &str) -> Result<(),
                     if let Some(operand) = inst.operands.get(0) {
                         let ptr = format_operand(operand);
                         let res = res_name.unwrap();
-                        writeln!(out, "    {} = *{};", res, ptr).map_err(err)?;
+                        writeln!(out, "    {} = *((__u64 *)(void *)({}));", res, ptr).map_err(err)?;
                     }
                 }
 
-                Opcode::Store { .. } => {
+                Opcode::Store { size } => {
                     if inst.operands.len() >= 2 {
                         let ptr = format_operand(&inst.operands[0]);
                         let val = format_operand(&inst.operands[1]);
-                        writeln!(out, "    *{} = {};", ptr, val).map_err(err)?;
+                        writeln!(out, "    *((__u{} *)(void *)({})) = {};", size * 8, ptr, val).map_err(err)?;
                     }
                 }
 
@@ -327,7 +326,7 @@ pub fn emit_tracepoint(out: &mut String, unit: &UnitIr, sec: &str) -> Result<(),
                 Opcode::NullCheck => {
                     if let Some(ptr_op) = inst.operands.get(0) {
                         let ptr_expr = format_operand(ptr_op);
-                        
+
                         if branch_cond_vars.contains(&inst.result.0) {
                             let res = res_name.unwrap_or_else(|| format!("v{}", inst.result.0));
                             writeln!(out, "    {} = ({} != 0);", res, ptr_expr).map_err(err)?;
@@ -339,6 +338,24 @@ pub fn emit_tracepoint(out: &mut String, unit: &UnitIr, sec: &str) -> Result<(),
                                 writeln!(out, "    {} = 1;", res).map_err(err)?;
                             }
                         }
+                    }
+                }
+
+                Opcode::RingBufReserve { map_name, size } => {
+                    let res = res_name.unwrap();
+
+                    writeln!(
+                        out,
+                        "    {} = (__u64)bpf_ringbuf_reserve(&{}, {}, 0);",
+                        res, map_name, size
+                    )
+                    .map_err(err)?;
+                }
+                Opcode::RingBufSubmit { map_name: _ } => {
+                    if let Some(ptr_op) = inst.operands.get(0) {
+                        let ptr = format_operand(ptr_op);
+
+                        writeln!(out, "    bpf_ringbuf_submit({}, 0);", ptr).map_err(err)?;
                     }
                 }
             }

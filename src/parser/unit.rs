@@ -56,6 +56,7 @@ pub fn parse_unit(parser: &mut Parser) -> Result<Unit, ParseError> {
         sections,
         kind,
         license,
+        events: Vec::new(), 
         body,
     })
 }
@@ -327,86 +328,87 @@ fn parse_unary(parser: &mut Parser) -> Result<Expr, ParseError> {
 }
 
 fn parse_primary(parser: &mut Parser) -> Result<Expr, ParseError> {
-    // number literal
+    let mut expr;
+
+    // number
     if parser.check(TokenKind::Number) {
         let num_tok = parser.expect(TokenKind::Number)?;
         let value = num_tok
             .int_value
             .ok_or_else(|| parser.error("Invalid number literal"))?;
 
-        return Ok(Expr {
+        expr = Expr {
             kind: ExprKind::Number(value),
             loc: num_tok.loc,
-        });
+        };
     }
-
     // (expr)
-    if parser.r#match(TokenKind::LParen) {
-        let e = parse_expr(parser)?;
+    else if parser.r#match(TokenKind::LParen) {
+        expr = parse_expr(parser)?;
         expect_token(parser, TokenKind::RParen)?;
-        return Ok(e);
     }
-
     // identifier
-    let ident_tok = parser.expect(TokenKind::Identifier)?;
-
-    // receiver.method(arg1, arg2, ...)
-    if parser.r#match(TokenKind::Dot) {
-        let method_tok = parser.expect(TokenKind::Identifier)?;
-        expect_token(parser, TokenKind::LParen)?;
-
-        let mut args = Vec::new();
-        if !parser.check(TokenKind::RParen) {
-            loop {
-                args.push(parse_expr(parser)?);
-                if parser.r#match(TokenKind::Comma) {
-                    continue;
-                }
-                break;
-            }
-        }
-
-        expect_token(parser, TokenKind::RParen)?;
-
-        return Ok(Expr {
-            kind: ExprKind::MethodCall(MethodCall {
-                receiver: ident_tok.lexeme,
-                method: method_tok.lexeme,
-                arg: args, // NOTE: matches your AST field name `arg`
-            }),
+    else {
+        let ident_tok = parser.expect(TokenKind::Identifier)?;
+        expr = Expr {
+            kind: ExprKind::Variable(ident_tok.lexeme),
             loc: ident_tok.loc,
-        });
+        };
     }
 
-    // function call: name(arg1, arg2, ...)
-    if parser.r#match(TokenKind::LParen) {
-        let mut args = Vec::new();
-        if !parser.check(TokenKind::RParen) {
-            loop {
-                args.push(parse_expr(parser)?);
-                if parser.r#match(TokenKind::Comma) {
-                    continue;
-                } else {
-                    break;
+    // POSTFIX LOOP (supports chaining)
+    loop {
+        // field access OR method call
+        if parser.r#match(TokenKind::Dot) {
+            let field_tok = parser.expect(TokenKind::Identifier)?;
+
+            // method call
+            if parser.r#match(TokenKind::LParen) {
+                let mut args = Vec::new();
+                if !parser.check(TokenKind::RParen) {
+                    loop {
+                        args.push(parse_expr(parser)?);
+                        if parser.r#match(TokenKind::Comma) {
+                            continue;
+                        }
+                        break;
+                    }
                 }
+                expect_token(parser, TokenKind::RParen)?;
+
+                expr = Expr {
+                    kind: ExprKind::MethodCall(MethodCall {
+                        receiver: match expr.kind {
+                            ExprKind::Variable(ref name) => Box::new(Expr {
+                                kind: ExprKind::Variable(name.clone()),
+                                loc: expr.loc,
+                            }),
+                            _ => panic!("Unsupported method receiver"),
+                        },
+                        method: field_tok.lexeme,
+                        arg: args,
+                    }),
+                    loc: expr.loc,
+                };
             }
+            // field access
+            else {
+                expr = Expr {
+                    kind: ExprKind::FieldAccess {
+                        base: Box::new(expr),
+                        field: field_tok.lexeme,
+                    },
+                    loc: field_tok.loc,
+                };
+            }
+
+            continue;
         }
 
-        expect_token(parser, TokenKind::RParen)?;
-        return Ok(Expr {
-            kind: ExprKind::Call(crate::ast::CallExpr {
-                name: ident_tok.lexeme,
-                args,
-            }),
-            loc: ident_tok.loc,
-        });
+        break;
     }
 
-    // variable
-    Ok(Expr {
-        kind: ExprKind::Variable(ident_tok.lexeme),
-        loc: ident_tok.loc,
-    })
+    Ok(expr)
 }
 
 fn parse_shift(parser: &mut Parser) -> Result<Expr, ParseError> {

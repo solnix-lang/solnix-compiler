@@ -1,11 +1,11 @@
-use super::category::ErrorCategory;
+use super::category::{ErrorCategory, ErrorType};
 use super::error_code::ErrorCode;
 use super::source_manager::{Span, SourceManager};
 use miette::{Diagnostic, SourceSpan};
 use thiserror::Error;
 
 #[derive(Error, Debug, Diagnostic)]
-#[error("{category} error: {code}\n  {message}")]
+#[error("{error_type}: {code}\n  {message}")]
 pub struct CompileDiagnostic {
     #[source_code]
     pub file_content: String,
@@ -15,6 +15,7 @@ pub struct CompileDiagnostic {
 
     pub code: String,
     pub category: ErrorCategory,
+    pub error_type: ErrorType,
     pub message: String,
     pub label_message: String,
 }
@@ -37,6 +38,11 @@ impl DiagnosticBuilder {
         }
     }
 
+    pub fn with_label(mut self, label: impl Into<String>) -> Self {
+        self.label_message = Some(label.into());
+        self
+    }
+
     pub fn build(
         self,
         span: &Span,
@@ -56,6 +62,7 @@ impl DiagnosticBuilder {
             span: span.to_source_span(),
             code: self.code.code(),
             category: self.category,
+            error_type: self.category.to_error_type(),
             message: self.message,
             label_message,
         })
