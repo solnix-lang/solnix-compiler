@@ -15,7 +15,7 @@ use clap::{Arg, Command, ArgMatches};
 
 fn main() {
     let mut app = Command::new("solnixc") 
-        .version("0.1.0-preview")
+        .version("0.2.0")
         .about("Experimental eBPF compiler for tracepoint programs")
         .subcommand(
             Command::new("compile")
@@ -39,7 +39,7 @@ fn main() {
     match matches.subcommand() {
         Some(("compile", sub_m)) => compile_cmd(sub_m),
         _ => {
-            println!("Solnix Compiler v0.1.0-preview");
+            println!("Solnix Compiler v0.2.0");
             app.print_help().unwrap();
             println!(); 
         }
