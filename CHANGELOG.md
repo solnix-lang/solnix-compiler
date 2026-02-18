@@ -11,7 +11,6 @@ This project follows Semantic Versioning.
 ### Added
 
 #### Language Features
-- `if / else` control flow support
 - `if guard(x) { ... } else { ... }` conditional safety pattern
 - Event definition syntax (`event { ... }`) mapped to struct layout
 
