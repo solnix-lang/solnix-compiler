@@ -59,7 +59,6 @@ Solnix follows a structured compilation pipeline:
             ↓
     eBPF Object (via clang)
 
-The compiler does not use LLVM directly.\
 Instead, it generates structured C code tailored for eBPF compilation.
 
 ------------------------------------------------------------------------
