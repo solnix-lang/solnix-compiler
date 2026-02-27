@@ -1,72 +1,195 @@
-# Solnix Compiler  
+# Solnix Compiler
 
-A simple compiler for the Solnix programming language. Solnix lets you write eBPF (Extended Berkeley Packet Filter) programs in a high-level, readable syntax instead of low-level C code.
+**Verifier-Safe eBPF Compiler for High-Assurance Linux Kernel Programs**
 
-## What is Solnix?
+A modern domain-specific language and compiler that generates safe,
+predictable eBPF C backend code.
 
-Solnix is a domain-specific language for creating eBPF programs. It provides a cleaner way to define maps, packet filters, and network functions that run in the Linux kernel.
+------------------------------------------------------------------------
 
-## 🚧 Status: Under Active Development
+## Overview
+
+Solnix is a high-level domain-specific language designed for
+writing Linux eBPF programs safely and concisely.
+
+The Solnix Compiler translates `.snx` source files into
+verifier-compliant C backend code, enabling predictable compilation into
+eBPF object files suitable for:
+
+-   Kernel tracing
+-   Security enforcement
+-   Observability pipelines
+-   Networking (XDP)
+-   LSM hooks
+-   System instrumentation
+
+Solnix eliminates common verifier errors by enforcing safety rules at
+compile time.
+
+------------------------------------------------------------------------
+
+## Key Features
+
+-   Verifier-aware static validation
+-   High-level DSL syntax
+-   Structured map definitions
+-   Built-in eBPF event modeling
+-   Safe register handling
+-   Deterministic C backend generation
+-   Minimal runtime overhead
+-   Rust-implemented compiler core
+
+------------------------------------------------------------------------
+
+## Architecture
+
+Solnix follows a structured compilation pipeline:
+
+    Solnix Source (.snx)
+            ↓
+    Lexer + Parser
+            ↓
+    AST Builder
+            ↓
+    Semantic & Verifier Validator
+            ↓
+    Intermediate Representation (IR)
+            ↓
+    C Backend Code Generator
+            ↓
+    eBPF Object (via clang)
+
+The compiler does not use LLVM directly.\
+Instead, it generates structured C code tailored for eBPF compilation.
+
+------------------------------------------------------------------------
 
 ## Installation
 
-Make sure you have Rust installed. Then:
+### Prebuilt Binary
 
-```bash
+Download the latest release:
+
+https://github.com/solnix-lang/solnix-compiler/releases
+
+Then:
+
+``` bash
+chmod +x solnixc
+sudo mv solnixc /usr/local/bin/
+```
+
+Verify:
+
+``` bash
+solnixc --version
+```
+
+------------------------------------------------------------------------
+
+### Build From Source
+
+Requirements:
+
+-   Rust (stable)
+-   Cargo
+-   clang (for eBPF backend compilation)
+
+``` bash
+git clone https://github.com/solnix-lang/solnix-compiler.git
+cd solnix-compiler
 cargo build --release
 ```
 
-This will create the `solnixc` binary in `target/release/`.
+Binary will be located at:
 
-## Usage
+    target/release/solnixc
 
-Compile a `.snx` source file to an eBPF object file:
+------------------------------------------------------------------------
 
-```bash
-./solnixc compile input.snx -o output.o
-```
+## Quick Example
 
-## Example
+### Solnix Source (`execve_monitor.snx`)
 
-Here's a simple Solnix program that counts connections by source IP:
-
-```solnix
-map connection_counter {
-    type: .hash;
-    key: u32;
-    value: u64;
-    max: 1024;
+``` snx
+map events {
+    type: .ringbuf,
+    max: 1 << 24
 }
 
-unit filter_packets {
-    section: "xdp";
-    license: "GPL";
+event exec_event {
+    pid: u32,
+    filename: bytes[256]
+}
 
-    reg src_ip = ctx.load_u32(26);
-    heap count_ptr = connection_counter.lookup(src_ip);
+unit trace_exec_filename {
+    section "tracepoint/syscalls/sys_enter_execve"
+    license "GPL"
 
-    if guard(count_ptr) {
-        *count_ptr += 1;
-    }
-    
-    return 1;
+    reg pid_tgid = ctx.get_pid_tgid()
+    reg pid = pid_tgid
 }
 ```
 
-Save this as `example.snx` and compile it with:
+Compile:
 
-```bash
-./solnixc compile example.snx -o example.o
+``` bash
+solnix build execve_monitor.snx
 ```
 
-## Features
+------------------------------------------------------------------------
 
-- High-level syntax for eBPF development
-- Automatic code generation to eBPF C
-- Support for XDP (eXpress Data Path) programs
-- Hash maps and other eBPF data structures
+## Project Structure
+
+    solnix-compiler/
+    │
+    ├── src/
+    │   ├── lexer/
+    │   ├── parser/
+    │   ├── ast/
+    │   ├── semantic/
+    │   ├── ir/
+    │   ├── codegen/
+    │   └── cli/
+    │
+    ├── tests/
+    ├── examples/
+    ├── Cargo.toml
+    └── README.md
+
+------------------------------------------------------------------------
+
+## Roadmap
+
+-   [ ] IR optimization passes
+-   [ ] LSP (Language Server Protocol)
+-   [ ] Advanced static analysis
+-   [ ] Cross-architecture support
+-   [ ] Package registry for Solnix libraries
+-   [ ] Formal verification layer
+
+------------------------------------------------------------------------
+
+## Contributing
+
+We welcome contributions.
+
+1.  Fork the repository
+2.  Create a feature branch
+3.  Submit a Pull Request
+
+Please read CONTRIBUTING.md before submitting changes.
+
+------------------------------------------------------------------------
 
 ## License
 
-[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://www.apache.org/licenses/LICENSE-2.0)
+Licensed under the Apache License 2.0.
 
+See LICENSE file for details.
+
+------------------------------------------------------------------------
+
+## Status
+
+Solnix is under active development and considered experimental.
