@@ -133,7 +133,7 @@ unit trace_exec_filename {
 Compile:
 
 ``` bash
-solnix build execve_monitor.snx
+solnixc compile execve_monitor.snx execve_monitor.o 
 ```
 
 ------------------------------------------------------------------------
