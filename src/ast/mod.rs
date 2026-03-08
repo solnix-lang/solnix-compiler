@@ -8,6 +8,6 @@ pub use program::Program;
 pub use map::{MapDecl, MapType, Type};
 pub use unit::{
     Assignment, AssignmentOp, Expr, ExprKind, HeapVarDecl,
-    IfGuard, MethodCall, Stmt, StmtKind, Unit, VarDecl, VarType,BinaryExpr, BinOp
+    IfGuard, MethodCall, Stmt, StmtKind, Unit, VarDecl, VarType,BinaryExpr, BinOp, CallExpr
 };
 pub use event::{EventDecl, EventField, EventType, PrimitiveType};

@@ -8,6 +8,8 @@ pub enum ErrorType {
     TypeError,
     /// Internal error from IR/Codegen stage
     InternalError,
+    /// I/O error
+    IoError,
 }
 
 impl ErrorType {
@@ -17,6 +19,7 @@ impl ErrorType {
             Self::SyntaxError => "Syntax error",
             Self::TypeError => "Type error",
             Self::InternalError => "Internal error",
+            Self::IoError => "I/O error",
         }
     }
 }
@@ -37,6 +40,10 @@ pub enum ErrorCategory {
     Semantic,
     /// Errors from the code generation phase
     Codegen,
+    /// Errors from the optimizer phase
+    Optimizer,
+    /// I/O errors
+    Io,
 }
 
 impl ErrorCategory {
@@ -46,6 +53,8 @@ impl ErrorCategory {
             Self::Parse => "Parse",
             Self::Semantic => "Semantic",
             Self::Codegen => "Codegen",
+            Self::Optimizer => "Optimizer",
+            Self::Io => "I/O",
         }
     }
 
@@ -55,7 +64,8 @@ impl ErrorCategory {
             Self::Lexical => ErrorType::InvalidToken,
             Self::Parse => ErrorType::SyntaxError,
             Self::Semantic => ErrorType::TypeError,
-            Self::Codegen => ErrorType::InternalError,
+            Self::Codegen | Self::Optimizer => ErrorType::InternalError,
+            Self::Io => ErrorType::IoError,
         }
     }
 }

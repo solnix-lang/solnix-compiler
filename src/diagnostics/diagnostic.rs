@@ -8,13 +8,10 @@ use thiserror::Error;
 #[error("{error_type}: {code}\n  {message}")]
 pub struct CompileDiagnostic {
     #[source_code]
-    pub source_code: String,  
+    pub file_content: String,
 
     #[label("{label_message}")]
     pub span: SourceSpan,
-
-    #[help]
-    pub file_name: String,
 
     pub code: String,
     pub category: ErrorCategory,
@@ -22,6 +19,7 @@ pub struct CompileDiagnostic {
     pub message: String,
     pub label_message: String,
 }
+
 
 pub struct DiagnosticBuilder {
     category: ErrorCategory,
@@ -40,6 +38,11 @@ impl DiagnosticBuilder {
         }
     }
 
+    pub fn with_label(mut self, label: impl Into<String>) -> Self {
+        self.label_message = Some(label.into());
+        self
+    }
+
     pub fn build(
         self,
         span: &Span,
@@ -50,19 +53,13 @@ impl DiagnosticBuilder {
             .ok_or("File content not found")?
             .to_string();
 
-        let file_name = source_manager
-            .file_name(span.file)
-            .ok_or("File name not found")?
-            .to_string();
-
         let label_message = self
             .label_message
             .unwrap_or_else(|| String::from("error here"));
 
         Ok(CompileDiagnostic {
-            source_code: file_content,
+            file_content,
             span: span.to_source_span(),
-            file_name, // Include the file name
             code: self.code.code(),
             category: self.category,
             error_type: self.category.to_error_type(),
@@ -70,4 +67,8 @@ impl DiagnosticBuilder {
             label_message,
         })
     }
+}
+
+impl CompileDiagnostic {
+    
 }
