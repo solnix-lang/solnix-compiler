@@ -1,2 +1,3 @@
-pub mod ebpf_c;
+pub mod ebpf_obj;
 pub mod util;
+pub mod btf;
