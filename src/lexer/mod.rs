@@ -209,7 +209,7 @@ impl<'src> Lexer<'src> {
     }
 
     fn read_string(&mut self) -> Result<crate::parser::Token, LexError> {
-        let start = self.index;
+        let _start = self.index;
         let loc = self.current_loc();
 
         if self.peek() != '"' {

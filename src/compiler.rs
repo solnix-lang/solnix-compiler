@@ -276,7 +276,7 @@ pub fn compile(input_path: &Path, _output_path: &Path) -> Result<(), miette::Rep
         .wrap_err("Lowering failed")?;
 
     // Emit eBPF code with stage-aware error handling
-    if let Err(e) = crate::emit::ebpf_c::program::emit_program(&program_ir, &output) {
+    if let Err(e) = crate::emit::ebpf_obj::emit_program(&program_ir, &output) {
         let span = Span::new(_file_id, 0..1);
         let error_msg = format!("Code generation failed: {}", e);
         
