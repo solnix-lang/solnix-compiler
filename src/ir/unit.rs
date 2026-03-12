@@ -72,7 +72,14 @@ impl UnitIr {
         };
 
         for stmt in &unit.body {
-            lower_statement(stmt, &mut ctx, &mut ir, &mut current_block, events, event_decls)?;
+            lower_statement(
+                stmt,
+                &mut ctx,
+                &mut ir,
+                &mut current_block,
+                events,
+                event_decls,
+            )?;
         }
 
         ir.blocks.push(current_block);
@@ -117,6 +124,7 @@ fn lower_ctx_helper(
         | CtxMethod::LoadI16
         | CtxMethod::LoadI32
         | CtxMethod::LoadI64
+        | CtxMethod::LoadBytes
         | CtxMethod::ProbeReadUserStr
         | CtxMethod::ProbeReadKernelStr => {
             return Err(LoweringError::UnitLowering(format!(
@@ -194,7 +202,8 @@ fn lower_statement(
                                 )));
                             }
 
-                            let key = lower_expr(&call.arg[0], ctx, ir, block, events, event_decls)?;
+                            let key =
+                                lower_expr(&call.arg[0], ctx, ir, block, events, event_decls)?;
                             let result = ir.alloc_var(crate::ast::Type::U64);
 
                             block.instructions.push(Instruction {
@@ -384,7 +393,7 @@ fn lower_statement(
                     // Handle field assignment like evt.pid = value
                     // First, get the base pointer/variable
                     let base_operand = lower_expr(base, ctx, ir, block, events, event_decls)?;
-                    
+
                     // Get the variable ID (should be a pointer from reserve)
                     let base_var = if let Operand::Var(v) = base_operand {
                         v
@@ -397,12 +406,14 @@ fn lower_statement(
                     // Look up field offset across all events
                     let mut field_offset: Option<u32> = None;
                     for (_, event_decl) in event_decls {
-                        if let Some(offset) = crate::sema::event::compute_field_offset(event_decl, field) {
+                        if let Some(offset) =
+                            crate::sema::event::compute_field_offset(event_decl, field)
+                        {
                             field_offset = Some(offset);
                             break;
                         }
                     }
-                    
+
                     let _offset = field_offset.ok_or_else(|| {
                         LoweringError::UnitLowering(format!("Unknown field: {}", field))
                     })?;
@@ -410,7 +421,8 @@ fn lower_statement(
                     // For now, we only support simple field assignments (no compound ops on fields)
                     if !matches!(assign.op, crate::ast::AssignmentOp::Assign) {
                         return Err(LoweringError::UnitLowering(
-                            "Compound assignment operators not supported on struct fields".to_string(),
+                            "Compound assignment operators not supported on struct fields"
+                                .to_string(),
                         ));
                     }
 
@@ -589,7 +601,8 @@ fn lower_expr(
                             )));
                         }
 
-                        let offset_expr = lower_expr(&call.arg[0], ctx, ir, block, events, event_decls)?;
+                        let offset_expr =
+                            lower_expr(&call.arg[0], ctx, ir, block, events, event_decls)?;
                         let offset = match offset_expr {
                             Operand::Immediate(n) => n as i32,
                             _ => {
@@ -639,7 +652,8 @@ fn lower_expr(
                         }
 
                         let dest = lower_expr(&call.arg[0], ctx, ir, block, events, event_decls)?;
-                        let size_expr = lower_expr(&call.arg[1], ctx, ir, block, events, event_decls)?;
+                        let size_expr =
+                            lower_expr(&call.arg[1], ctx, ir, block, events, event_decls)?;
                         let src = lower_expr(&call.arg[2], ctx, ir, block, events, event_decls)?;
 
                         let size = match size_expr {
@@ -672,7 +686,8 @@ fn lower_expr(
                         }
 
                         let dest = lower_expr(&call.arg[0], ctx, ir, block, events, event_decls)?;
-                        let size_expr = lower_expr(&call.arg[1], ctx, ir, block, events, event_decls)?;
+                        let size_expr =
+                            lower_expr(&call.arg[1], ctx, ir, block, events, event_decls)?;
                         let src = lower_expr(&call.arg[2], ctx, ir, block, events, event_decls)?;
 
                         let size = match size_expr {
@@ -695,6 +710,46 @@ fn lower_expr(
                         Ok(Operand::Var(result))
                     }
 
+                    CtxMethod::LoadBytes => {
+                        if call.arg.len() != 3 {
+                            return Err(LoweringError::UnitLowering(
+                                "ctx.load_bytes expects (offset, dest, size)".to_string(),
+                            ));
+                        }
+
+                        let offset_expr =
+                            lower_expr(&call.arg[0], ctx, ir, block, events, event_decls)?;
+                        let dest = lower_expr(&call.arg[1], ctx, ir, block, events, event_decls)?;
+                        let size_expr =
+                            lower_expr(&call.arg[2], ctx, ir, block, events, event_decls)?;
+
+                        let offset = match offset_expr {
+                            Operand::Immediate(n) => n as i32,
+                            _ => {
+                                return Err(LoweringError::UnitLowering(
+                                    "offset must be immediate".to_string(),
+                                ))
+                            }
+                        };
+
+                        let size = match size_expr {
+                            Operand::Immediate(n) => n as u32,
+                            _ => {
+                                return Err(LoweringError::UnitLowering(
+                                    "size must be immediate".to_string(),
+                                ))
+                            }
+                        };
+
+                        block.instructions.push(Instruction {
+                            result: ir.alloc_var(crate::ast::Type::U64),
+                            opcode: Opcode::CopyCtxToMem { offset, size },
+                            operands: vec![dest.clone()],
+                            result_type: crate::ast::Type::U64,
+                        });
+
+                        Ok(dest)
+                    }
                     // ctx helper methods (0 args)
                     _ => {
                         if !call.arg.is_empty() {
@@ -908,7 +963,7 @@ fn lower_expr(
         ExprKind::FieldAccess { base, field } => {
             // Handle field access like evt.filename
             let base_operand = lower_expr(base, ctx, ir, block, events, event_decls)?;
-            
+
             // Get the variable ID (should be a pointer from reserve)
             let base_var = if let Operand::Var(v) = base_operand {
                 v
@@ -926,10 +981,9 @@ fn lower_expr(
                     break;
                 }
             }
-            
-            let _offset = field_offset.ok_or_else(|| {
-                LoweringError::UnitLowering(format!("Unknown field: {}", field))
-            })?;
+
+            let _offset = field_offset
+                .ok_or_else(|| LoweringError::UnitLowering(format!("Unknown field: {}", field)))?;
 
             // Create a load instruction from the field
             // TODO: Currently we load from base pointer with fixed size
