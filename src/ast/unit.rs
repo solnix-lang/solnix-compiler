@@ -223,6 +223,7 @@ impl ProgramKind {
                 LoadI16,
                 LoadI32,
                 LoadI64,
+                LoadBytes,
                 GetPidTgid,
                 GetUidGid,
                 GetCurrentComm,

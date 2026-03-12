@@ -23,6 +23,8 @@ pub enum Opcode {
     LoadCtx { offset: i32, size: u8 },
     LoadPacket { offset: i32, size: u8 },
 
+    CopyCtxToMem { offset: i32, size: u32 },
+
     // checks
     NullCheck,
 

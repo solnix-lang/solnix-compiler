@@ -11,27 +11,27 @@ pub enum CtxMethod {
     LoadI16,
     LoadI32,
     LoadI64,
+    LoadBytes,
 
     // ================================
     // Process / task metadata helpers
     // ================================
-    GetPidTgid,        // bpf_get_current_pid_tgid (helper 14)
-    GetUidGid,         // bpf_get_current_uid_gid
-    GetCurrentComm,    // bpf_get_current_comm
-    GetCurrentTask,    // bpf_get_current_task
+    GetPidTgid,     // bpf_get_current_pid_tgid (helper 14)
+    GetUidGid,      // bpf_get_current_uid_gid
+    GetCurrentComm, // bpf_get_current_comm
+    GetCurrentTask, // bpf_get_current_task
 
     // ================================
     // Time helpers
     // ================================
-    GetKtimeNs,        // bpf_ktime_get_ns
+    GetKtimeNs, // bpf_ktime_get_ns
 
     // ================================
     // Memory probe helpers
     // ================================
-    ProbeReadUserStr,  // bpf_probe_read_user_str (helper 202)
+    ProbeReadUserStr,   // bpf_probe_read_user_str (helper 202)
     ProbeReadKernelStr, // bpf_probe_read_kernel_str (helper 204)
 }
-
 
 impl CtxMethod {
     pub fn from_str(name: &str) -> Option<Self> {
@@ -45,6 +45,7 @@ impl CtxMethod {
             "load_i16" => Some(Self::LoadI16),
             "load_i32" => Some(Self::LoadI32),
             "load_i64" => Some(Self::LoadI64),
+            "load_bytes" => Some(Self::LoadBytes),
 
             // Metadata helpers
             "get_pid_tgid" => Some(Self::GetPidTgid),

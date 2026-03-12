@@ -196,7 +196,8 @@ pub fn emit_tracepoint(out: &mut String, unit: &UnitIr, sec: &str) -> Result<(),
                     if let Some(operand) = inst.operands.get(0) {
                         let ptr = format_operand(operand);
                         let res = res_name.unwrap();
-                        writeln!(out, "    {} = *((__u64 *)(void *)({}));", res, ptr).map_err(err)?;
+                        writeln!(out, "    {} = *((__u64 *)(void *)({}));", res, ptr)
+                            .map_err(err)?;
                     }
                 }
 
@@ -204,7 +205,14 @@ pub fn emit_tracepoint(out: &mut String, unit: &UnitIr, sec: &str) -> Result<(),
                     if inst.operands.len() >= 2 {
                         let ptr = format_operand(&inst.operands[0]);
                         let val = format_operand(&inst.operands[1]);
-                        writeln!(out, "    *((__u{} *)(void *)({})) = {};", size * 8, ptr, val).map_err(err)?;
+                        writeln!(
+                            out,
+                            "    *((__u{} *)(void *)({})) = {};",
+                            size * 8,
+                            ptr,
+                            val
+                        )
+                        .map_err(err)?;
                     }
                 }
 
@@ -357,6 +365,18 @@ pub fn emit_tracepoint(out: &mut String, unit: &UnitIr, sec: &str) -> Result<(),
 
                         writeln!(out, "    bpf_ringbuf_submit({}, 0);", ptr).map_err(err)?;
                     }
+                }
+                Opcode::CopyCtxToMem { offset, size } => {
+                    let dest = match &inst.operands[0] {
+                        Operand::Var(v) => format!("v{}", v.0),
+                        _ => panic!("CopyCtxToMem expects dest var"),
+                    };
+
+                    writeln!(
+                        out,
+                        "bpf_probe_read_kernel({}, {}, (void *)ctx + {});",
+                        dest, size, offset
+                    );
                 }
             }
 

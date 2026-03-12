@@ -132,7 +132,7 @@ impl<'src> Lexer<'src> {
             "guard" => TokenKind::KeywordGuard,
             "heap" => TokenKind::KeywordHeap,
             "event" => TokenKind::KeywordEvent,
-            "bytes" => TokenKind::KeywordBytes, // ADD THIS
+            "bytes" => TokenKind::KeywordBytes, 
             "u32" => TokenKind::TypeU32,
             "u64" => TokenKind::TypeU64,
             "i32" => TokenKind::TypeI32,
