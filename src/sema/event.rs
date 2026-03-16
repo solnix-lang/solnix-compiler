@@ -184,3 +184,24 @@ pub fn compute_field_offset(event: &EventDecl, field_name: &str) -> Option<u32> 
 
     None
 }
+
+pub fn compute_field_size(event: &EventDecl, field_name: &str) -> Option<u32> {
+    for field in &event.fields {
+        if field.name != field_name {
+            continue;
+        }
+        return Some(match &field.ty {
+            EventType::U32 | EventType::I32 => 4,
+            EventType::U64 | EventType::I64 => 8,
+            EventType::Bytes(len) => *len,
+            EventType::Array { elem, len } => {
+                let elem_size = match elem {
+                    PrimitiveType::U32 | PrimitiveType::I32 => 4,
+                    PrimitiveType::U64 | PrimitiveType::I64 => 8,
+                };
+                elem_size * (*len)
+            }
+        });
+    }
+    None
+}

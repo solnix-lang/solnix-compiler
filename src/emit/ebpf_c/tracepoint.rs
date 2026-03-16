@@ -164,7 +164,11 @@ pub fn emit_tracepoint(out: &mut String, unit: &UnitIr, sec: &str) -> Result<(),
 
             let is_side_effect = matches!(
                 inst.opcode,
-                Opcode::Store { .. } | Opcode::UpdateMap { .. } | Opcode::NullCheck
+                Opcode::Store { .. }
+                    | Opcode::UpdateMap { .. }
+                    | Opcode::NullCheck
+                    | Opcode::HelperCall { .. }
+                    | Opcode::RingBufSubmit { .. }
             );
 
             if !is_side_effect && !res_used {
@@ -241,15 +245,78 @@ pub fn emit_tracepoint(out: &mut String, unit: &UnitIr, sec: &str) -> Result<(),
                 }
 
                 Opcode::HelperCall { id } => {
-                    let call_expr = match *id {
-                        5 => "bpf_ktime_get_ns()",
-                        14 => "bpf_get_current_pid_tgid()",
-                        15 => "bpf_get_current_uid_gid()",
-                        35 => "bpf_get_current_task()",
-                        _ => "0",
-                    };
-                    let res = res_name.unwrap();
-                    writeln!(out, "    {} = {};", res, call_expr).map_err(err)?;
+                    match *id {
+                        5 => {
+                            let res = res_name.unwrap();
+                            writeln!(out, "    {} = bpf_ktime_get_ns();", res).map_err(err)?;
+                        }
+                        14 => {
+                            let res = res_name.unwrap();
+                            writeln!(out, "    {} = bpf_get_current_pid_tgid();", res).map_err(err)?;
+                        }
+                        15 => {
+                            let res = res_name.unwrap();
+                            writeln!(out, "    {} = bpf_get_current_uid_gid();", res).map_err(err)?;
+                        }
+                        35 => {
+                            let res = res_name.unwrap();
+                            writeln!(out, "    {} = bpf_get_current_task();", res).map_err(err)?;
+                        }
+                        202 => {
+                            // bpf_probe_read_user_str(void *dst, u32 size, const void *unsafe_ptr)
+                            if inst.operands.len() != 3 {
+                                return Err("internal error: helper 202 expects 3 operands".to_string());
+                            }
+                            let dst = format_operand(&inst.operands[0]);
+                            let size = format_operand(&inst.operands[1]);
+                            let src = format_operand(&inst.operands[2]);
+                            if let Some(res) = res_name {
+                                writeln!(
+                                    out,
+                                    "    {} = bpf_probe_read_user_str((void *){}, {}, (void *){});",
+                                    res, dst, size, src
+                                )
+                                .map_err(err)?;
+                            } else {
+                                writeln!(
+                                    out,
+                                    "    (void)bpf_probe_read_user_str((void *){}, {}, (void *){});",
+                                    dst, size, src
+                                )
+                                .map_err(err)?;
+                            }
+                        }
+                        204 => {
+                            // bpf_probe_read_kernel_str(void *dst, u32 size, const void *unsafe_ptr)
+                            if inst.operands.len() != 3 {
+                                return Err("internal error: helper 204 expects 3 operands".to_string());
+                            }
+                            let dst = format_operand(&inst.operands[0]);
+                            let size = format_operand(&inst.operands[1]);
+                            let src = format_operand(&inst.operands[2]);
+                            if let Some(res) = res_name {
+                                writeln!(
+                                    out,
+                                    "    {} = bpf_probe_read_kernel_str((void *){}, {}, (void *){});",
+                                    res, dst, size, src
+                                )
+                                .map_err(err)?;
+                            } else {
+                                writeln!(
+                                    out,
+                                    "    (void)bpf_probe_read_kernel_str((void *){}, {}, (void *){});",
+                                    dst, size, src
+                                )
+                                .map_err(err)?;
+                            }
+                        }
+                        other => {
+                            return Err(format!(
+                                "unsupported helper id {} in C emitter (needs explicit lowering)",
+                                other
+                            ));
+                        }
+                    }
                 }
 
                 Opcode::CallMap { map_name } => {
@@ -363,7 +430,7 @@ pub fn emit_tracepoint(out: &mut String, unit: &UnitIr, sec: &str) -> Result<(),
                     if let Some(ptr_op) = inst.operands.get(0) {
                         let ptr = format_operand(ptr_op);
 
-                        writeln!(out, "    bpf_ringbuf_submit({}, 0);", ptr).map_err(err)?;
+                        writeln!(out, "    bpf_ringbuf_submit((void *){}, 0);", ptr).map_err(err)?;
                     }
                 }
                 Opcode::CopyCtxToMem { offset, size } => {

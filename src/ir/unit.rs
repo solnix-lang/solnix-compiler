@@ -403,22 +403,41 @@ fn lower_statement(
                         ));
                     };
 
-                    // Look up field offset across all events
+                    // Look up field offset + size across all events
                     let mut field_offset: Option<u32> = None;
+                    let mut field_size: Option<u32> = None;
                     for (_, event_decl) in event_decls {
                         if let Some(offset) =
                             crate::sema::event::compute_field_offset(event_decl, field)
                         {
                             field_offset = Some(offset);
+                            field_size = crate::sema::event::compute_field_size(event_decl, field);
                             break;
                         }
                     }
 
-                    let _offset = field_offset.ok_or_else(|| {
+                    let offset = field_offset.ok_or_else(|| {
                         LoweringError::UnitLowering(format!("Unknown field: {}", field))
                     })?;
+                    let size = field_size.ok_or_else(|| {
+                        LoweringError::UnitLowering(format!("Unknown field size: {}", field))
+                    })?;
 
-                    // For now, we only support simple field assignments (no compound ops on fields)
+                    // Compute pointer to the field: base + offset
+                    let field_ptr_var = if offset == 0 {
+                        base_var
+                    } else {
+                        let ptr = ir.alloc_var(crate::ast::Type::U64);
+                        block.instructions.push(Instruction {
+                            result: ptr,
+                            opcode: Opcode::Binary { op: BinaryOp::Add },
+                            operands: vec![Operand::Var(base_var), Operand::Immediate(offset as i64)],
+                            result_type: crate::ast::Type::U64,
+                        });
+                        ptr
+                    };
+
+                    // support simple field assignments
                     if !matches!(assign.op, crate::ast::AssignmentOp::Assign) {
                         return Err(LoweringError::UnitLowering(
                             "Compound assignment operators not supported on struct fields"
@@ -426,14 +445,14 @@ fn lower_statement(
                         ));
                     }
 
-                    // Create a store instruction for the field
-                    // TODO: Currently we store at the base pointer with fixed size
-                    // In the future, we should track field offsets and sizes per event type
+                    // Create a store instruction for the field (correct offset + size)
                     let result = ir.alloc_var(crate::ast::Type::U64);
                     block.instructions.push(Instruction {
                         result,
-                        opcode: Opcode::Store { size: 8 },
-                        operands: vec![Operand::Var(base_var), value.clone()],
+                        opcode: Opcode::Store {
+                            size: (size as u8),
+                        },
+                        operands: vec![Operand::Var(field_ptr_var), value.clone()],
                         result_type: crate::ast::Type::U64,
                     });
                 }
@@ -961,7 +980,7 @@ fn lower_expr(
         }
 
         ExprKind::FieldAccess { base, field } => {
-            // Handle field access like evt.filename
+            // Handle field access like evt.filename (returns pointer to the field)
             let base_operand = lower_expr(base, ctx, ir, block, events, event_decls)?;
 
             // Get the variable ID (should be a pointer from reserve)
@@ -982,21 +1001,21 @@ fn lower_expr(
                 }
             }
 
-            let _offset = field_offset
+            let offset = field_offset
                 .ok_or_else(|| LoweringError::UnitLowering(format!("Unknown field: {}", field)))?;
 
-            // Create a load instruction from the field
-            // TODO: Currently we load from base pointer with fixed size
-            // In the future, we should track field offsets and sizes per event type
-            let result = ir.alloc_var(crate::ast::Type::U64);
-            block.instructions.push(Instruction {
-                result,
-                opcode: Opcode::LoadKey,
-                operands: vec![Operand::Var(base_var)],
-                result_type: crate::ast::Type::U64,
-            });
-
-            Ok(Operand::Var(result))
+            if offset == 0 {
+                Ok(Operand::Var(base_var))
+            } else {
+                let result = ir.alloc_var(crate::ast::Type::U64);
+                block.instructions.push(Instruction {
+                    result,
+                    opcode: Opcode::Binary { op: BinaryOp::Add },
+                    operands: vec![Operand::Var(base_var), Operand::Immediate(offset as i64)],
+                    result_type: crate::ast::Type::U64,
+                });
+                Ok(Operand::Var(result))
+            }
         }
 
         other => Err(LoweringError::UnitLowering(format!(
