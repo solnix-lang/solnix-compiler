@@ -103,13 +103,8 @@ pub struct CallExpr {
     pub args: Vec<Expr>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum UnaryOp {
-    Neg,    // -
-    Not,    // !
-}
-
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub enum ExprKind {
     Variable(String),
     Number(i64),
@@ -121,13 +116,8 @@ pub enum ExprKind {
     Integer(i64),
     Bool(bool),
     Identifier(String),
-    SizeOf {
-        name: String,
-    },
-    FieldAccess {
-        base: Box<Expr>,
-        field: String,
-    },
+    SizeOf { name: String },
+    FieldAccess { base: Box<Expr>, field: String },
 }
 
 #[derive(Debug, Clone)]

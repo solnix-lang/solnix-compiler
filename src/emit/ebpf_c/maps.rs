@@ -50,7 +50,6 @@ fn map_type_to_c(t: MapType) -> &'static str {
         MapType::Ringbuf => "BPF_MAP_TYPE_RINGBUF",
         MapType::LruHash => "BPF_MAP_TYPE_LRU_HASH",
         MapType::ProgArray => "BPF_MAP_TYPE_PROG_ARRAY",
-        MapType::PerfEventArray => "BPF_MAP_TYPE_PERF_EVENT_ARRAY",
     }
 }
 

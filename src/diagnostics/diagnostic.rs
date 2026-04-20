@@ -1,6 +1,6 @@
 use super::category::{ErrorCategory, ErrorType};
 use super::error_code::ErrorCode;
-use super::source_manager::{Span, SourceManager};
+use super::source_manager::{SourceManager, Span};
 use miette::{Diagnostic, SourceSpan};
 use thiserror::Error;
 
@@ -8,7 +8,7 @@ use thiserror::Error;
 #[error("{error_type}: {code}\n  {message}")]
 pub struct CompileDiagnostic {
     #[source_code]
-    pub file_content: String,
+    pub src: Option<miette::NamedSource<std::sync::Arc<String>>>,
 
     #[label("{label_message}")]
     pub span: SourceSpan,
@@ -19,7 +19,6 @@ pub struct CompileDiagnostic {
     pub message: String,
     pub label_message: String,
 }
-
 
 pub struct DiagnosticBuilder {
     category: ErrorCategory,
@@ -38,27 +37,21 @@ impl DiagnosticBuilder {
         }
     }
 
-    pub fn with_label(mut self, label: impl Into<String>) -> Self {
-        self.label_message = Some(label.into());
-        self
-    }
-
     pub fn build(
         self,
         span: &Span,
         source_manager: &SourceManager,
     ) -> Result<CompileDiagnostic, String> {
-        let file_content = source_manager
-            .file_content(span.file)
-            .ok_or("File content not found")?
-            .to_string();
+        let src = source_manager
+            .get_named_source(span.file)
+            .ok_or("File not found")?;
 
         let label_message = self
             .label_message
             .unwrap_or_else(|| String::from("error here"));
 
         Ok(CompileDiagnostic {
-            file_content,
+            src: Some(src),
             span: span.to_source_span(),
             code: self.code.code(),
             category: self.category,
@@ -69,6 +62,4 @@ impl DiagnosticBuilder {
     }
 }
 
-impl CompileDiagnostic {
-    
-}
+impl CompileDiagnostic {}

@@ -1,10 +1,33 @@
-
 const STATIC_SECTIONS: &[&str] = &[
-    "xdp", "xdp/ingress", "xdp/egress", "xdp/frags", "xdp/devmap", "xdp/cpumap", "xdp/offload",
-    "tc", "classifier", "action", "tcx/ingress", "tcx/egress", "tc/ingress", "tc/egress",
-    "tracepoint", "tp", "raw_tracepoint", "raw_tp", "tp_btf",
-    "cgroup_skb", "cgroup_sock", "cgroup_skb/ingress", "cgroup_skb/egress", "sockops", "sk_msg",
-    "maps", "license", "version", "perf_event",
+    "xdp",
+    "xdp/ingress",
+    "xdp/egress",
+    "xdp/frags",
+    "xdp/devmap",
+    "xdp/cpumap",
+    "xdp/offload",
+    "tc",
+    "classifier",
+    "action",
+    "tcx/ingress",
+    "tcx/egress",
+    "tc/ingress",
+    "tc/egress",
+    "tracepoint",
+    "tp",
+    "raw_tracepoint",
+    "raw_tp",
+    "tp_btf",
+    "cgroup_skb",
+    "cgroup_sock",
+    "cgroup_skb/ingress",
+    "cgroup_skb/egress",
+    "sockops",
+    "sk_msg",
+    "maps",
+    "license",
+    "version",
+    "perf_event",
 ];
 
 pub struct SectionValidator;
@@ -16,18 +39,20 @@ impl SectionValidator {
         }
 
         if section.starts_with("tracepoint/") || section.starts_with("tp/") {
-            let path = section.strip_prefix("tp/")
+            let path = section
+                .strip_prefix("tp/")
                 .or_else(|| section.strip_prefix("tracepoint/"))
                 .unwrap();
-            
+
             let parts: Vec<&str> = path.split('/').collect();
-            return parts.len() == 2 
-                && Self::is_valid_identifier(parts[0]) 
+            return parts.len() == 2
+                && Self::is_valid_identifier(parts[0])
                 && Self::is_valid_identifier(parts[1]);
         }
 
         if section.starts_with("raw_tracepoint/") || section.starts_with("raw_tp/") {
-            let event = section.strip_prefix("raw_tp/")
+            let event = section
+                .strip_prefix("raw_tp/")
                 .or_else(|| section.strip_prefix("raw_tracepoint/"))
                 .unwrap();
             return Self::is_valid_identifier(event);
@@ -38,25 +63,31 @@ impl SectionValidator {
         }
 
         if section.starts_with("kprobe/") || section.starts_with("kretprobe/") {
-            let func = section.strip_prefix("kprobe/")
+            let func = section
+                .strip_prefix("kprobe/")
                 .or_else(|| section.strip_prefix("kretprobe/"))
                 .unwrap();
             return Self::is_valid_identifier(func);
         }
 
         if section.starts_with("uprobe/") || section.starts_with("uretprobe/") {
-            let sym = section.strip_prefix("uprobe/")
+            let sym = section
+                .strip_prefix("uprobe/")
                 .or_else(|| section.strip_prefix("uretprobe/"))
                 .unwrap();
             return Self::is_valid_identifier(sym);
         }
 
-        if section.starts_with("tc/") || section.starts_with("classifier/") || section.starts_with("action/") {
-            let extras = section.strip_prefix("tc/")
+        if section.starts_with("tc/")
+            || section.starts_with("classifier/")
+            || section.starts_with("action/")
+        {
+            let extras = section
+                .strip_prefix("tc/")
                 .or_else(|| section.strip_prefix("classifier/"))
                 .or_else(|| section.strip_prefix("action/"))
                 .unwrap();
-            
+
             if extras.is_empty() {
                 return false;
             }
@@ -70,14 +101,16 @@ impl SectionValidator {
     }
 
     fn is_valid_tc_extras(extras: &str) -> bool {
-        extras.chars().all(|c| c.is_alphanumeric() || c == '_' || c == '.' || c == '-')
+        extras
+            .chars()
+            .all(|c| c.is_alphanumeric() || c == '_' || c == '.' || c == '-')
     }
 
     fn is_valid_identifier(name: &str) -> bool {
         if name.is_empty() {
             return false;
         }
-        
+
         let mut chars = name.chars();
         let first = chars.next().unwrap();
         if !first.is_alphabetic() && first != '_' {

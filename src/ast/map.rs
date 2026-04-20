@@ -18,7 +18,6 @@ pub enum MapType {
     Ringbuf,
     LruHash,    
     ProgArray,
-    PerfEventArray,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

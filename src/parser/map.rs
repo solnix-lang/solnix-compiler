@@ -81,7 +81,7 @@ pub fn parse_map(parser: &mut Parser) -> Result<MapDecl, ParseError> {
             }
         }
 
-        MapType::Hash | MapType::Array | MapType::LruHash | MapType::ProgArray | MapType::PerfEventArray => {
+        MapType::Hash | MapType::Array | MapType::LruHash | MapType::ProgArray => {
             if key_type.is_none() {
                 return Err(parser.error("Map missing required field: key"));
             }

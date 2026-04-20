@@ -68,7 +68,6 @@ impl ErrorHandler {
         DiagnosticBuilder::new(ErrorCategory::Codegen, ErrorCode::CodegenError, message)
             .build(span, &self.source_manager)
     }
-    
 }
 
 pub fn compile(input_path: &Path, _output_path: &Path) -> Result<(), miette::Report> {
@@ -107,22 +106,25 @@ pub fn compile(input_path: &Path, _output_path: &Path) -> Result<(), miette::Rep
         Err(e) => {
             let span = Span::new(_file_id, e.0.offset..e.0.offset + 1);
 
-            let error_result = if e.1.contains("Invalid character") 
-                || e.1.contains("Unterminated") 
+            let error_result = if e.1.contains("Invalid character")
+                || e.1.contains("Unterminated")
                 || e.1.contains("Invalid escape sequence")
-                || e.1.contains("Unexpected character") {
+                || e.1.contains("Unexpected character")
+            {
                 let code = match e.1.as_str() {
                     msg if msg.contains("Invalid character") => ErrorCode::InvalidCharacter,
                     msg if msg.contains("Unterminated comment") => ErrorCode::UnterminatedComment,
                     msg if msg.contains("Unterminated string") => ErrorCode::UnterminatedString,
-                    msg if msg.contains("Invalid escape sequence") => ErrorCode::InvalidEscapeSequence,
+                    msg if msg.contains("Invalid escape sequence") => {
+                        ErrorCode::InvalidEscapeSequence
+                    }
                     _ => ErrorCode::InvalidCharacter,
                 };
                 error_handler.lexical_error(code, e.1.clone(), &span)
             } else {
                 error_handler.parse_error(e.1.clone(), &span)
             };
-            
+
             match error_result {
                 Ok(diag) => {
                     let report = error_handler.report_error(diag);
@@ -137,7 +139,7 @@ pub fn compile(input_path: &Path, _output_path: &Path) -> Result<(), miette::Rep
             }
         }
     };
-    
+
     if let Err(sem_err) = crate::sema::check_program(&program) {
         use crate::diagnostics::ErrorCode;
         use crate::parser::SourceLoc;
@@ -154,6 +156,14 @@ pub fn compile(input_path: &Path, _output_path: &Path) -> Result<(), miette::Rep
                 | crate::sema::map::MapValidationError::UnexpectedKeyValue(l)
                 | crate::sema::map::MapValidationError::MissingKey(l)
                 | crate::sema::map::MapValidationError::MissingValue(l) => *l,
+            },
+            crate::sema::SemanticError::EventError(ee) => match ee {
+                crate::sema::event::EventValidationError::DuplicateEventName(_, l)
+                | crate::sema::event::EventValidationError::EmptyEvent(_, l)
+                | crate::sema::event::EventValidationError::DuplicateField(_, l)
+                | crate::sema::event::EventValidationError::ZeroLengthArray(l)
+                | crate::sema::event::EventValidationError::NestedArray(l)
+                | crate::sema::event::EventValidationError::EventTooLarge(_, _, l) => *l,
             },
             crate::sema::SemanticError::UnitError(ue) => match ue {
                 crate::sema::unit::UnitValidationError::EmptyUnitName(l)
@@ -220,6 +230,35 @@ pub fn compile(input_path: &Path, _output_path: &Path) -> Result<(), miette::Rep
                     "This map type must not define key/value".to_string(),
                 ),
             },
+            crate::sema::SemanticError::EventError(ee) => match ee {
+                crate::sema::event::EventValidationError::DuplicateEventName(name, _) => (
+                    ErrorCode::DuplicateIdentifier,
+                    format!("Duplicate event name: '{}'", name),
+                ),
+                crate::sema::event::EventValidationError::EmptyEvent(name, _) => (
+                    ErrorCode::InvalidEventDeclaration,
+                    format!("Event '{}' must contain at least one field", name),
+                ),
+                crate::sema::event::EventValidationError::DuplicateField(name, _) => (
+                    ErrorCode::InvalidEventDeclaration,
+                    format!("Duplicate field '{}' in event", name),
+                ),
+                crate::sema::event::EventValidationError::ZeroLengthArray(_) => (
+                    ErrorCode::InvalidEventDeclaration,
+                    "Array length must be greater than zero".to_string(),
+                ),
+                crate::sema::event::EventValidationError::NestedArray(_) => (
+                    ErrorCode::InvalidEventDeclaration,
+                    "Nested arrays are not allowed in event fields".to_string(),
+                ),
+                crate::sema::event::EventValidationError::EventTooLarge(name, size, _) => (
+                    ErrorCode::InvalidEventDeclaration,
+                    format!(
+                        "Event '{}' exceeds maximum allowed size ({} bytes)",
+                        name, size
+                    ),
+                ),
+            },
             crate::sema::SemanticError::UnitError(ue) => match ue {
                 crate::sema::unit::UnitValidationError::EmptyUnitName(_) => (
                     ErrorCode::InvalidProgramType,
@@ -279,7 +318,7 @@ pub fn compile(input_path: &Path, _output_path: &Path) -> Result<(), miette::Rep
     if let Err(e) = crate::emit::ebpf_c::program::emit_program(&program_ir, &output) {
         let span = Span::new(_file_id, 0..1);
         let error_msg = format!("Code generation failed: {}", e);
-        
+
         match error_handler.codegen_error(error_msg.clone(), &span) {
             Ok(diag) => {
                 let report = error_handler.report_error(diag);

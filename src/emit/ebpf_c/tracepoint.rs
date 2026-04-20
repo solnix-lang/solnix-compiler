@@ -142,8 +142,10 @@ pub fn emit_tracepoint(out: &mut String, unit: &UnitIr, sec: &str) -> Result<(),
         writeln!(out).map_err(err)?;
     }
 
-    writeln!(out, "    goto __block_{};", unit.blocks[0].id.0).map_err(err)?;
-    writeln!(out).map_err(err)?;
+    if unit.blocks.len() > 1 {
+        writeln!(out, "    goto __block_{};", unit.blocks[0].id.0).map_err(err)?;
+        writeln!(out).map_err(err)?;
+    }
 
     let mut block_ids = HashSet::<u32>::new();
     for b in &unit.blocks {
@@ -252,11 +254,13 @@ pub fn emit_tracepoint(out: &mut String, unit: &UnitIr, sec: &str) -> Result<(),
                         }
                         14 => {
                             let res = res_name.unwrap();
-                            writeln!(out, "    {} = bpf_get_current_pid_tgid();", res).map_err(err)?;
+                            writeln!(out, "    {} = bpf_get_current_pid_tgid();", res)
+                                .map_err(err)?;
                         }
                         15 => {
                             let res = res_name.unwrap();
-                            writeln!(out, "    {} = bpf_get_current_uid_gid();", res).map_err(err)?;
+                            writeln!(out, "    {} = bpf_get_current_uid_gid();", res)
+                                .map_err(err)?;
                         }
                         35 => {
                             let res = res_name.unwrap();
@@ -265,7 +269,9 @@ pub fn emit_tracepoint(out: &mut String, unit: &UnitIr, sec: &str) -> Result<(),
                         202 => {
                             // bpf_probe_read_user_str(void *dst, u32 size, const void *unsafe_ptr)
                             if inst.operands.len() != 3 {
-                                return Err("internal error: helper 202 expects 3 operands".to_string());
+                                return Err(
+                                    "internal error: helper 202 expects 3 operands".to_string()
+                                );
                             }
                             let dst = format_operand(&inst.operands[0]);
                             let size = format_operand(&inst.operands[1]);
@@ -289,7 +295,9 @@ pub fn emit_tracepoint(out: &mut String, unit: &UnitIr, sec: &str) -> Result<(),
                         204 => {
                             // bpf_probe_read_kernel_str(void *dst, u32 size, const void *unsafe_ptr)
                             if inst.operands.len() != 3 {
-                                return Err("internal error: helper 204 expects 3 operands".to_string());
+                                return Err(
+                                    "internal error: helper 204 expects 3 operands".to_string()
+                                );
                             }
                             let dst = format_operand(&inst.operands[0]);
                             let size = format_operand(&inst.operands[1]);
@@ -426,24 +434,29 @@ pub fn emit_tracepoint(out: &mut String, unit: &UnitIr, sec: &str) -> Result<(),
                     )
                     .map_err(err)?;
                 }
-                Opcode::RingBufSubmit { map_name: _ } => {
+                Opcode::RingBufSubmit { map_name } => {
                     if let Some(ptr_op) = inst.operands.get(0) {
                         let ptr = format_operand(ptr_op);
 
-                        writeln!(out, "    bpf_ringbuf_submit((void *){}, 0);", ptr).map_err(err)?;
+                        writeln!(
+                            out,
+                            "    bpf_ringbuf_submit(&{}, (void *){}, 0);",
+                            map_name, ptr
+                        )
+                        .map_err(err)?;
                     }
                 }
                 Opcode::CopyCtxToMem { offset, size } => {
                     let dest = match &inst.operands[0] {
                         Operand::Var(v) => format!("v{}", v.0),
-                        _ => panic!("CopyCtxToMem expects dest var"),
+                        _ => return Err("CopyCtxToMem expects dest var".into()),
                     };
-
+                    let res = res_name.unwrap();
                     writeln!(
                         out,
-                        "bpf_probe_read_kernel({}, {}, (void *)ctx + {});",
-                        dest, size, offset
-                    );
+                        "    {} = bpf_probe_read_kernel((void *)&{}, {}, (void *)((__u8 *)ctx + {}));",
+                        res, dest, size, offset
+                    ).map_err(err)?;
                 }
             }
 
@@ -481,9 +494,6 @@ pub fn emit_tracepoint(out: &mut String, unit: &UnitIr, sec: &str) -> Result<(),
 
         writeln!(out).map_err(err)?;
     }
-
-    writeln!(out, "__solnix_null_fail:").map_err(err)?;
-    writeln!(out, "    return 0;").map_err(err)?;
     writeln!(out, "}}").map_err(err)?;
     Ok(())
 }
