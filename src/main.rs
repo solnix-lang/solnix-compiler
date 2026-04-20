@@ -12,8 +12,17 @@ mod build;
 use compiler::compile;
 use std::path::PathBuf;
 use clap::{Arg, Command, ArgMatches};
+use kernel_check::check_core_support;
+mod kernel_check;
 
 fn main() {
+    if let Err(e) = check_core_support() {
+        eprintln!("\n❌  CO-RE Check Failed");
+        eprintln!("{}", "=".repeat(50));
+        eprintln!("{e}");
+        eprintln!("{}\n", "=".repeat(50));
+        std::process::exit(2);
+    }
     let mut app = Command::new("solnixc") 
         .version("0.2.0")
         .about("Experimental eBPF compiler for tracepoint programs")

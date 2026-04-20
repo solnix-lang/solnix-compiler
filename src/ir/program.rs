@@ -5,7 +5,6 @@ use crate::ast::{MapDecl, Program};
 pub struct ProgramIr {
     pub maps: Vec<MapDecl>,
     pub units: Vec<UnitIr>,
-    pub events: std::collections::HashMap<String, u32>,
 }
 
 pub fn lower_program(program: &Program) -> Result<ProgramIr, LoweringError> {
@@ -28,6 +27,5 @@ pub fn lower_program(program: &Program) -> Result<ProgramIr, LoweringError> {
     Ok(ProgramIr {
         maps: program.maps.clone(),
         units,
-        events: event_sizes,
     })
 }

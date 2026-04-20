@@ -4,7 +4,6 @@ use std::collections::HashSet;
 
 #[derive(Debug, thiserror::Error)]
 pub enum EventValidationError {
-
     #[error("Duplicate event name: {0}")]
     DuplicateEventName(String, SourceLoc),
 
@@ -30,7 +29,6 @@ pub fn check_event(
     event: &EventDecl,
     event_names: &mut HashSet<String>,
 ) -> Result<(), EventValidationError> {
-
     // 1️Duplicate event name
     if !event_names.insert(event.name.clone()) {
         return Err(EventValidationError::DuplicateEventName(
@@ -53,7 +51,6 @@ pub fn check_event(
     let mut max_align: u32 = 1;
 
     for field in &event.fields {
-
         // 3️Duplicate field name
         if !field_names.insert(field.name.clone()) {
             return Err(EventValidationError::DuplicateField(
@@ -88,13 +85,8 @@ pub fn check_event(
     Ok(())
 }
 
-fn validate_event_type(
-    ty: &EventType,
-    loc: SourceLoc,
-) -> Result<(u32, u32), EventValidationError> {
-
+fn validate_event_type(ty: &EventType, loc: SourceLoc) -> Result<(u32, u32), EventValidationError> {
     match ty {
-
         EventType::U32 | EventType::I32 => Ok((4, 4)),
 
         EventType::U64 | EventType::I64 => Ok((8, 8)),
@@ -139,14 +131,13 @@ fn align_up(offset: u32, align: u32) -> u32 {
     (offset + align - 1) & !(align - 1)
 }
 
-
 pub fn compute_event_size(event: &EventDecl) -> u32 {
     let mut offset: u32 = 0;
     let mut max_align: u32 = 1;
 
     for field in &event.fields {
-        let (size, align) = validate_event_type(&field.ty, field.loc)
-            .expect("Event should already be validated");
+        let (size, align) =
+            validate_event_type(&field.ty, field.loc).expect("Event should already be validated");
 
         max_align = max_align.max(align);
 
@@ -163,15 +154,15 @@ pub fn compute_field_offset(event: &EventDecl, field_name: &str) -> Option<u32> 
 
     // First pass: calculate alignments
     for field in &event.fields {
-        let (_, align) = validate_event_type(&field.ty, field.loc)
-            .expect("Event should already be validated");
+        let (_, align) =
+            validate_event_type(&field.ty, field.loc).expect("Event should already be validated");
         max_align = max_align.max(align);
     }
 
     // Second pass: calculate field offset
     for field in &event.fields {
-        let (size, align) = validate_event_type(&field.ty, field.loc)
-            .expect("Event should already be validated");
+        let (size, align) =
+            validate_event_type(&field.ty, field.loc).expect("Event should already be validated");
 
         offset = align_up(offset, align);
 

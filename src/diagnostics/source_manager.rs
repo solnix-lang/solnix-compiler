@@ -1,11 +1,9 @@
-
-
 use std::collections::HashMap;
 use std::ops::Range;
+use std::sync::Arc;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct FileId(pub u32);
-
 
 #[derive(Debug, Clone)]
 pub struct Span {
@@ -15,7 +13,7 @@ pub struct Span {
 
 pub struct SourceFile {
     pub name: String,
-    pub content: String,
+    pub content: Arc<String>,
 }
 
 pub struct SourceManager {
@@ -36,45 +34,14 @@ impl SourceManager {
     pub fn add_file(&mut self, name: String, content: String) -> FileId {
         let id = FileId(self.next_id);
         self.next_id += 1;
-        self.files.insert(id, SourceFile { name, content });
+        self.files.insert(id, SourceFile { name, content: Arc::new(content) });
         id
     }
 
-    /// Get a source file by ID
-    pub fn get(&self, id: FileId) -> Option<&SourceFile> {
-        self.files.get(&id)
-    }
-
-    /// Get the file name for a given FileId
-    pub fn file_name(&self, id: FileId) -> Option<&str> {
-        self.files.get(&id).map(|f| f.name.as_str())
-    }
-
-    /// Get the file content for a given FileId
-    pub fn file_content(&self, id: FileId) -> Option<&str> {
-        self.files.get(&id).map(|f| f.content.as_str())
-    }
-
-    /// Get line and column information for a byte offset
-    pub fn line_col(&self, file: FileId, byte_offset: usize) -> Option<(usize, usize)> {
-        let content = self.file_content(file)?;
-
-        let mut line = 1;
-        let mut col = 1;
-
-        for (i, ch) in content.chars().enumerate() {
-            if i >= byte_offset {
-                break;
-            }
-            if ch == '\n' {
-                line += 1;
-                col = 1;
-            } else {
-                col += 1;
-            }
-        }
-
-        Some((line, col))
+    pub fn get_named_source(&self, id: FileId) -> Option<miette::NamedSource<std::sync::Arc<String>>> {
+        self.files
+            .get(&id)
+            .map(|f| miette::NamedSource::new(f.name.clone(), f.content.clone()))
     }
 }
 

@@ -1,23 +1,24 @@
-
-pub mod map;
-pub mod unit;
-pub mod section;
 pub mod event;
+pub mod map;
+pub mod section;
+pub mod unit;
 
 use crate::ast::Program;
 use std::collections::HashSet;
-    
+
 #[derive(Debug, thiserror::Error)]
 pub enum SemanticError {
     #[error("Map validation failed")]
     MapError(#[from] map::MapValidationError),
-    
+
+    #[error("Event validation failed")]
+    EventError(#[from] event::EventValidationError),
+
     #[error("Unit validation failed")]
     UnitError(#[from] unit::UnitValidationError),
 }
 
 pub fn check_program(program: &Program) -> Result<(), SemanticError> {
-
     let mut map_names = HashSet::new();
     let mut event_names = HashSet::new();
 
@@ -28,7 +29,7 @@ pub fn check_program(program: &Program) -> Result<(), SemanticError> {
 
     // 2️Validate events
     for event_decl in &program.events {
-        event::check_event(event_decl, &mut event_names);
+        event::check_event(event_decl, &mut event_names)?;
     }
 
     // 3️Validate units

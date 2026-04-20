@@ -25,7 +25,4 @@ pub use unit::{
 pub enum LoweringError {
     #[error("Failed to lower unit: {0}")]
     UnitLowering(String),
-
-    #[error("Invalid operand in expression")]
-    InvalidOperand,
 }
