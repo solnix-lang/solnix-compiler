@@ -95,14 +95,13 @@ pub fn parse_map(parser: &mut Parser) -> Result<MapDecl, ParseError> {
     }
 
     Ok(MapDecl {
-    name: map_name_tok.lexeme,
-    map_type,
-    key_type,
-    value_type,
-    max_entries,
-    loc: map_loc,
-})
-
+        name: map_name_tok.lexeme,
+        map_type,
+        key_type,
+        value_type,
+        max_entries,
+        loc: map_loc,
+    })
 }
 
 pub fn parse_type(parser: &mut Parser) -> Result<Type, ParseError> {

@@ -431,7 +431,10 @@ fn lower_statement(
                         block.instructions.push(Instruction {
                             result: ptr,
                             opcode: Opcode::Binary { op: BinaryOp::Add },
-                            operands: vec![Operand::Var(base_var), Operand::Immediate(offset as i64)],
+                            operands: vec![
+                                Operand::Var(base_var),
+                                Operand::Immediate(offset as i64),
+                            ],
                             result_type: crate::ast::Type::U64,
                         });
                         ptr
@@ -449,9 +452,7 @@ fn lower_statement(
                     let result = ir.alloc_var(crate::ast::Type::U64);
                     block.instructions.push(Instruction {
                         result,
-                        opcode: Opcode::Store {
-                            size: (size as u8),
-                        },
+                        opcode: Opcode::Store { size: (size as u8) },
                         operands: vec![Operand::Var(field_ptr_var), value.clone()],
                         result_type: crate::ast::Type::U64,
                     });

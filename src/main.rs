@@ -1,29 +1,18 @@
+mod ast;
 mod compiler;
 mod diagnostics;
-mod parser;
-mod ast;
-mod lexer;
-mod sema;
-mod ir;
 mod emit;
-mod build;
+mod ir;
+mod lexer;
+mod parser;
+mod sema;
 
-
+use clap::{Arg, ArgMatches, Command};
 use compiler::compile;
 use std::path::PathBuf;
-use clap::{Arg, Command, ArgMatches};
-use kernel_check::check_core_support;
-mod kernel_check;
 
 fn main() {
-    if let Err(e) = check_core_support() {
-        eprintln!("\n❌  CO-RE Check Failed");
-        eprintln!("{}", "=".repeat(50));
-        eprintln!("{e}");
-        eprintln!("{}\n", "=".repeat(50));
-        std::process::exit(2);
-    }
-    let mut app = Command::new("solnixc") 
+    let mut app = Command::new("solnixc")
         .version("0.2.0")
         .about("Experimental eBPF compiler for tracepoint programs")
         .subcommand(
@@ -50,11 +39,10 @@ fn main() {
         _ => {
             println!("Solnix Compiler v0.2.0");
             app.print_help().unwrap();
-            println!(); 
+            println!();
         }
     }
 }
-
 
 fn compile_cmd(matches: &ArgMatches) {
     let input_path = PathBuf::from(matches.get_one::<String>("input").unwrap());

@@ -19,5 +19,7 @@ vmlinux.h
 
 build.sh
 
+/examples
+
 /test
 .snx

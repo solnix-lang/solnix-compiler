@@ -26,5 +26,9 @@ pub fn parse_program(parser: &mut Parser) -> Result<Program, ParseError> {
         }
     }
 
-    Ok(Program { maps, units, events })
+    Ok(Program {
+        maps,
+        units,
+        events,
+    })
 }

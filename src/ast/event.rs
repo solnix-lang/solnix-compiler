@@ -32,10 +32,7 @@ pub enum EventType {
     Bytes(u32),
 
     /// Fixed-size integer array (e.g. u32[16])
-    Array {
-        elem: PrimitiveType,
-        len: u32,
-    },
+    Array { elem: PrimitiveType, len: u32 },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

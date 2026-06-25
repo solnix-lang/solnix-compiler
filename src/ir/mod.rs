@@ -4,22 +4,11 @@ pub mod unit;
 pub use program::lower_program;
 pub mod ctx;
 
+pub use instruction::{BinaryOp, Instruction, Opcode, Operand, VarId};
 
-pub use instruction::{
-    Instruction,
-    VarId,
-    Opcode,
-    BinaryOp,
-    Operand,
-};
+pub use program::ProgramIr;
 
-pub use program::{
-    ProgramIr,
-};
-
-pub use unit::{
-    UnitIr,
-};
+pub use unit::UnitIr;
 
 #[derive(Debug, thiserror::Error)]
 pub enum LoweringError {
