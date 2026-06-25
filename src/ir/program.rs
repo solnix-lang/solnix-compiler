@@ -1,4 +1,4 @@
-use super::{UnitIr, LoweringError};
+use super::{LoweringError, UnitIr};
 use crate::ast::{MapDecl, Program};
 
 #[derive(Debug, Clone)]
@@ -9,11 +9,11 @@ pub struct ProgramIr {
 
 pub fn lower_program(program: &Program) -> Result<ProgramIr, LoweringError> {
     let mut units = Vec::new();
-    
+
     // Build event map at program level
     let mut event_sizes = std::collections::HashMap::new();
     let mut event_decls = std::collections::HashMap::new();
-    
+
     for event in &program.events {
         let size = crate::sema::event::compute_event_size(event);
         event_sizes.insert(event.name.clone(), size);

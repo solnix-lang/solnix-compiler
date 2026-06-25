@@ -56,7 +56,7 @@ pub fn parse_unit(parser: &mut Parser) -> Result<Unit, ParseError> {
         sections,
         kind,
         license,
-        events: Vec::new(), 
+        events: Vec::new(),
         body,
     })
 }

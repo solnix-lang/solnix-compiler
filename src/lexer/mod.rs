@@ -1,5 +1,4 @@
 #![allow(unused_assignments)]
-#![allow(unused_assignments)]
 
 use crate::parser::TokenKind;
 
@@ -132,7 +131,7 @@ impl<'src> Lexer<'src> {
             "guard" => TokenKind::KeywordGuard,
             "heap" => TokenKind::KeywordHeap,
             "event" => TokenKind::KeywordEvent,
-            "bytes" => TokenKind::KeywordBytes, 
+            "bytes" => TokenKind::KeywordBytes,
             "u32" => TokenKind::TypeU32,
             "u64" => TokenKind::TypeU64,
             "i32" => TokenKind::TypeI32,
@@ -430,5 +429,21 @@ impl<'src> Lexer<'src> {
             }
             _ => Err((loc, "Invalid character".to_string())),
         }
+    }
+
+    pub fn tokenize(mut self) -> Result<Vec<crate::parser::Token>, LexError> {
+        let mut tokens = Vec::new();
+
+        loop {
+            let token = self.next_token()?;
+            let is_eof = token.kind == TokenKind::Eof;
+            tokens.push(token);
+
+            if is_eof {
+                break;
+            }
+        }
+
+        Ok(tokens)
     }
 }

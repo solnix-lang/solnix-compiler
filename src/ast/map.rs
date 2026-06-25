@@ -1,4 +1,3 @@
-
 use crate::parser::SourceLoc;
 
 #[derive(Debug, Clone)]
@@ -16,7 +15,7 @@ pub enum MapType {
     Hash,
     Array,
     Ringbuf,
-    LruHash,    
+    LruHash,
     ProgArray,
 }
 

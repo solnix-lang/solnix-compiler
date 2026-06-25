@@ -70,7 +70,8 @@ fn parse_event_type(parser: &mut Parser) -> Result<EventType, ParseError> {
         if parser.r#match(TokenKind::LBracket) {
             let len_tok = parser.expect(TokenKind::Number)?;
 
-            let len = len_tok.int_value
+            let len = len_tok
+                .int_value
                 .ok_or((len_tok.loc, "Invalid array length".to_string()))?
                 as u32;
 
@@ -92,9 +93,9 @@ fn parse_event_type(parser: &mut Parser) -> Result<EventType, ParseError> {
         parser.expect(TokenKind::LBracket)?;
 
         let len_tok = parser.expect(TokenKind::Number)?;
-        let len = len_tok.int_value
-            .ok_or((len_tok.loc, "Invalid bytes length".to_string()))?
-            as u32;
+        let len = len_tok
+            .int_value
+            .ok_or((len_tok.loc, "Invalid bytes length".to_string()))? as u32;
 
         parser.expect(TokenKind::RBracket)?;
 

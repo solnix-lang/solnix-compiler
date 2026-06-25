@@ -1,6 +1,7 @@
 use crate::diagnostics::{
     CompileDiagnostic, DiagnosticBuilder, ErrorCategory, ErrorCode, SourceManager, Span,
 };
+use crate::lexer::Lexer;
 use crate::parser;
 use miette::{IntoDiagnostic, Report, WrapErr};
 use std::fs;
@@ -70,7 +71,7 @@ impl ErrorHandler {
     }
 }
 
-pub fn compile(input_path: &Path, _output_path: &Path) -> Result<(), miette::Report> {
+pub fn compile(input_path: &Path, output_path: &Path) -> Result<(), miette::Report> {
     match input_path.extension().and_then(|e| e.to_str()) {
         Some("snx") => {}
         _ => {
@@ -101,29 +102,33 @@ pub fn compile(input_path: &Path, _output_path: &Path) -> Result<(), miette::Rep
 
     let mut error_handler = ErrorHandler::new();
     let _file_id = error_handler.add_file(input_path.display().to_string(), src.clone());
-    let program = match parser::parse(&src) {
+
+    let tokens = match Lexer::new(&src).tokenize() {
+        Ok(tokens) => tokens,
+        Err(e) => {
+            let span = Span::new(_file_id, e.0.offset..e.0.offset + 1);
+            let code = lexical_error_code(&e.1);
+
+            match error_handler.lexical_error(code, e.1.clone(), &span) {
+                Ok(diag) => {
+                    let report = error_handler.report_error(diag);
+                    eprintln!("{}", report);
+                    return Err(report);
+                }
+                Err(_) => {
+                    let report = miette::miette!("{}", e.1);
+                    eprintln!("{}", report);
+                    return Err(report);
+                }
+            }
+        }
+    };
+
+    let program = match parser::parse_tokens(tokens) {
         Ok(prog) => prog,
         Err(e) => {
             let span = Span::new(_file_id, e.0.offset..e.0.offset + 1);
-
-            let error_result = if e.1.contains("Invalid character")
-                || e.1.contains("Unterminated")
-                || e.1.contains("Invalid escape sequence")
-                || e.1.contains("Unexpected character")
-            {
-                let code = match e.1.as_str() {
-                    msg if msg.contains("Invalid character") => ErrorCode::InvalidCharacter,
-                    msg if msg.contains("Unterminated comment") => ErrorCode::UnterminatedComment,
-                    msg if msg.contains("Unterminated string") => ErrorCode::UnterminatedString,
-                    msg if msg.contains("Invalid escape sequence") => {
-                        ErrorCode::InvalidEscapeSequence
-                    }
-                    _ => ErrorCode::InvalidCharacter,
-                };
-                error_handler.lexical_error(code, e.1.clone(), &span)
-            } else {
-                error_handler.parse_error(e.1.clone(), &span)
-            };
+            let error_result = error_handler.parse_error(e.1.clone(), &span);
 
             match error_result {
                 Ok(diag) => {
@@ -297,25 +302,12 @@ pub fn compile(input_path: &Path, _output_path: &Path) -> Result<(), miette::Rep
         }
     }
 
-    // Build steps: prepare build dir, ensure vmlinux.h, lower and emit
-    let build_dir = crate::build::layout::prepare_build_dir()
-        .map_err(|e| miette::miette!("{}", e))
-        .wrap_err("Build failed")?;
-
-    crate::build::vmlinux::ensure_vmlinux(&build_dir)
-        .map_err(|e| miette::miette!("{}", e))
-        .wrap_err("Build failed")?;
-
-    let file_stem = input_path.file_stem().unwrap().to_string_lossy();
-
-    let output = build_dir.join(format!("{file_stem}.o"));
-
     let program_ir = crate::ir::lower_program(&program)
         .map_err(|e| miette::miette!("{:?}", e))
         .wrap_err("Lowering failed")?;
 
-    // Emit eBPF code with stage-aware error handling
-    if let Err(e) = crate::emit::ebpf_c::program::emit_program(&program_ir, &output) {
+    // Emit native eBPF ELF object with stage-aware error handling.
+    if let Err(e) = crate::emit::ebpf::emit_program(&program_ir, output_path) {
         let span = Span::new(_file_id, 0..1);
         let error_msg = format!("Code generation failed: {}", e);
 
@@ -334,4 +326,13 @@ pub fn compile(input_path: &Path, _output_path: &Path) -> Result<(), miette::Rep
     }
 
     Ok(())
+}
+
+fn lexical_error_code(message: &str) -> ErrorCode {
+    match message {
+        msg if msg.contains("Unterminated comment") => ErrorCode::UnterminatedComment,
+        msg if msg.contains("Unterminated string") => ErrorCode::UnterminatedString,
+        msg if msg.contains("Invalid escape sequence") => ErrorCode::InvalidEscapeSequence,
+        _ => ErrorCode::InvalidCharacter,
+    }
 }

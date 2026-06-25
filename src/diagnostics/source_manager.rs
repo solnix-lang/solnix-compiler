@@ -34,11 +34,20 @@ impl SourceManager {
     pub fn add_file(&mut self, name: String, content: String) -> FileId {
         let id = FileId(self.next_id);
         self.next_id += 1;
-        self.files.insert(id, SourceFile { name, content: Arc::new(content) });
+        self.files.insert(
+            id,
+            SourceFile {
+                name,
+                content: Arc::new(content),
+            },
+        );
         id
     }
 
-    pub fn get_named_source(&self, id: FileId) -> Option<miette::NamedSource<std::sync::Arc<String>>> {
+    pub fn get_named_source(
+        &self,
+        id: FileId,
+    ) -> Option<miette::NamedSource<std::sync::Arc<String>>> {
         self.files
             .get(&id)
             .map(|f| miette::NamedSource::new(f.name.clone(), f.content.clone()))
