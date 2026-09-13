@@ -180,9 +180,13 @@ impl Builder {
 pub fn compile_tracepoint(unit: &UnitIr) -> Result<CompiledProgram, String> {
     let mut b = Builder::new(unit)?;
     let branch_cond_vars = branch_condition_vars(unit);
+    let reachable_blocks = reachable_block_ids(unit);
     b.push(Insn::new(BPF_MOV64_REG, R6, R1, 0, 0));
 
     for block in &unit.blocks {
+        if !reachable_blocks.contains(&block.id.0) {
+            continue;
+        }
         b.block_offsets.insert(block.id.0, b.insns.len());
 
         for inst in &block.instructions {
@@ -320,6 +324,44 @@ pub fn compile_tracepoint(unit: &UnitIr) -> Result<CompiledProgram, String> {
         code,
         relocs: b.relocs,
     })
+}
+
+fn reachable_block_ids(unit: &UnitIr) -> HashSet<u32> {
+    let blocks = unit
+        .blocks
+        .iter()
+        .map(|block| (block.id.0, block))
+        .collect::<HashMap<_, _>>();
+    let entry = match unit.blocks.first() {
+        Some(block) => block.id.0,
+        None => return HashSet::new(),
+    };
+
+    let mut reachable = HashSet::new();
+    let mut pending = vec![entry];
+    while let Some(block_id) = pending.pop() {
+        if !reachable.insert(block_id) {
+            continue;
+        }
+
+        let Some(block) = blocks.get(&block_id) else {
+            continue;
+        };
+        match block.terminator {
+            Terminator::Return(_) => {}
+            Terminator::Jump(target) => pending.push(target.0),
+            Terminator::Branch {
+                true_block,
+                false_block,
+                ..
+            } => {
+                pending.push(true_block.0);
+                pending.push(false_block.0);
+            }
+        }
+    }
+
+    reachable
 }
 
 fn branch_condition_vars(unit: &UnitIr) -> HashSet<u32> {

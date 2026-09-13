@@ -21,7 +21,6 @@ pub fn parse_unit(parser: &mut Parser) -> Result<Unit, ParseError> {
 
     while !parser.check(TokenKind::RBrace) {
         if parser.r#match(TokenKind::KeywordSection) {
-            expect_token(parser, TokenKind::Colon)?;
             let s = parser.expect(TokenKind::StringLiteral)?;
 
             let txt = s.lexeme.trim_matches('"').to_string();
@@ -31,7 +30,6 @@ pub fn parse_unit(parser: &mut Parser) -> Result<Unit, ParseError> {
         }
 
         if parser.r#match(TokenKind::KeywordLicense) {
-            expect_token(parser, TokenKind::Colon)?;
             let s = parser.expect(TokenKind::StringLiteral)?;
 
             let txt = s.lexeme.trim_matches('"').to_string();
