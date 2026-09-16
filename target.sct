@@ -1,0 +1,23 @@
+/ {
+    linux {
+        kernel = "6.8";
+
+        helpers {
+            bpf_map_lookup_elem {
+                id = 1;
+            };
+
+            bpf_map_update_elem {
+                id = 2;
+            };
+
+            bpf_probe_read_user_str {
+                id = 114;
+            };
+
+            bpf_dynptr_write {
+                id = 202;
+            };
+        };
+    };
+};
