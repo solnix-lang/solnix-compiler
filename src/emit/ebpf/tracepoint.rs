@@ -416,7 +416,7 @@ fn emit_helper_call(
                     .to_string(),
             );
         }
-        202 | 204 => {
+        114 | 115 => {
             if operands.len() != 3 {
                 return Err(format!("helper {} expects dest, size, src operands", id));
             }

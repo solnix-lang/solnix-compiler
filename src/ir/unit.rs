@@ -688,7 +688,7 @@ fn lower_expr(
                         let result = ir.alloc_var(crate::ast::Type::U64);
                         block.instructions.push(Instruction {
                             result,
-                            opcode: Opcode::HelperCall { id: 202 },
+                            opcode: Opcode::HelperCall { id: 114 },
                             operands: vec![dest, Operand::Immediate(size as i64), src],
                             result_type: crate::ast::Type::U64,
                         });
@@ -722,7 +722,7 @@ fn lower_expr(
                         let result = ir.alloc_var(crate::ast::Type::U64);
                         block.instructions.push(Instruction {
                             result,
-                            opcode: Opcode::HelperCall { id: 204 },
+                            opcode: Opcode::HelperCall { id: 115 },
                             operands: vec![dest, Operand::Immediate(size as i64), src],
                             result_type: crate::ast::Type::U64,
                         });
